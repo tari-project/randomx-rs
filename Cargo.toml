@@ -1,0 +1,21 @@
+[package]
+name = "randomx-rs"
+description = "Rust bindings for the RandomX Proof-of-Work"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/randomx-rs"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.0.5"
+edition = "2018"
+build="build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2.62"
+
+[build-dependencies]
+git2 = "0.8"
