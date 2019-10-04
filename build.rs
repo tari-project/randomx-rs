@@ -37,20 +37,20 @@ fn main() {
             Ok(repo) => repo,
             Err(e) => panic!("Failed to clone RandomX: {}", e),
         };
+    }
+    env::set_current_dir(Path::new(&repo_dir)).unwrap(); //change current path to repo for dependency build
 
-        env::set_current_dir(Path::new(&repo_dir)).unwrap(); //change current path to repo for dependency build
+    let _ = Command::new("cmake")
+        .arg("-DARCH=native")
+        .arg(".")
+        .output()
+        .expect("failed to execute CMake");
 
-        Command::new("cmake")
-            .arg("-DARCH=native")
-            .output()
-            .expect("failed to execute CMake");
+    Command::new("make")
+        .output()
+        .expect("failed to execute Make");
 
-        Command::new("make")
-            .output()
-            .expect("failed to execute Make");
-
-        env::set_current_dir(Path::new(&project_dir)).unwrap(); //change path back to main project
-    };
+    env::set_current_dir(Path::new(&project_dir)).unwrap(); //change path back to main project
 
     println!("cargo:rustc-link-search=native={}", &repo_dir);
     println!("cargo:rustc-link-lib=dylib=c++"); //link to c++
