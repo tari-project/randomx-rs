@@ -21,38 +21,61 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern crate git2;
 
-use git2::Repository;
+use git2::{Oid, Repository};
 use std::env;
+use std::fs::create_dir_all;
 use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let repo_dir = format!("{}{}", project_dir, "/randomx/");
+    let project_dir_str = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let project_dir = Path::new(&project_dir_str);
+    let repo_dir = project_dir.join("randomx");
 
-    if !Path::new(&repo_dir).exists() {
+    if !repo_dir.exists() {
+        create_dir_all(&repo_dir.to_str().unwrap()).unwrap();
         let url = "https://github.com/tevador/RandomX.git";
 
-        let _repo = match Repository::clone(url, "./randomx") {
+        let repo = match Repository::clone(url, &repo_dir.to_str().unwrap()) {
             Ok(repo) => repo,
             Err(e) => panic!("Failed to clone RandomX: {}", e),
         };
 
-        env::set_current_dir(Path::new(&repo_dir)).unwrap(); //change current path to repo for dependency build
+        let commit_str = "298cc77095c8992e30ecdd4ca0aa09a969a62bc1";
 
-        Command::new("cmake")
-            .arg("-DARCH=native")
-            .output()
-            .expect("failed to execute CMake");
+        let oid = Oid::from_str(commit_str).unwrap();
+        let commit = repo.find_commit(oid).unwrap();
 
-        Command::new("make")
-            .output()
-            .expect("failed to execute Make");
+        let _branch = repo.branch(commit_str, &commit, false);
 
-        env::set_current_dir(Path::new(&project_dir)).unwrap(); //change path back to main project
-    };
+        let obj = repo
+            .revparse_single(&("refs/heads/".to_owned() + commit_str))
+            .unwrap();
 
-    println!("cargo:rustc-link-search=native={}", &repo_dir);
+        repo.checkout_tree(&obj, None).unwrap();
+
+        repo.set_head(&("refs/heads/".to_owned() + commit_str))
+            .unwrap();
+    }
+
+    env::set_current_dir(Path::new(&repo_dir)).unwrap(); //change current path to repo for dependency build
+
+    let _ = Command::new("cmake")
+        .arg("-DARCH=native")
+        .arg(".")
+        .output()
+        .expect("failed to execute CMake");
+
+    Command::new("make")
+        .output()
+        .expect("failed to execute Make");
+
+    env::set_current_dir(Path::new(&project_dir)).unwrap(); //change path back to main project
+
+    println!(
+        "cargo:rustc-link-search=native={}",
+        &repo_dir.to_str().unwrap()
+    );
     println!("cargo:rustc-link-lib=dylib=c++"); //link to c++
     println!("cargo:rustc-link-lib=randomx"); //link to RandomX
 }
