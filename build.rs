@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern crate git2;
 
-use git2::{Repository, Oid};
+use git2::{Oid, Repository};
 use std::env;
+use std::fs::create_dir_all;
 use std::path::Path;
 use std::process::Command;
-use std::fs::create_dir_all;
 
 fn main() {
     let project_dir_str = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -46,20 +46,16 @@ fn main() {
         let oid = Oid::from_str(commit_str).unwrap();
         let commit = repo.find_commit(oid).unwrap();
 
-        let _branch = repo.branch(
-            commit_str,
-            &commit,
-            false,
-        );
+        let _branch = repo.branch(commit_str, &commit, false);
 
-        let obj = repo.revparse_single(&("refs/heads/".to_owned() + commit_str)).unwrap();
+        let obj = repo
+            .revparse_single(&("refs/heads/".to_owned() + commit_str))
+            .unwrap();
 
-        repo.checkout_tree(
-            &obj,
-            None,
-        ).unwrap();
+        repo.checkout_tree(&obj, None).unwrap();
 
-        repo.set_head(&("refs/heads/".to_owned() + commit_str)).unwrap();
+        repo.set_head(&("refs/heads/".to_owned() + commit_str))
+            .unwrap();
     }
 
     env::set_current_dir(Path::new(&repo_dir)).unwrap(); //change current path to repo for dependency build
@@ -76,7 +72,10 @@ fn main() {
 
     env::set_current_dir(Path::new(&project_dir)).unwrap(); //change path back to main project
 
-    println!("cargo:rustc-link-search=native={}", &repo_dir.to_str().unwrap());
+    println!(
+        "cargo:rustc-link-search=native={}",
+        &repo_dir.to_str().unwrap()
+    );
     println!("cargo:rustc-link-lib=dylib=c++"); //link to c++
     println!("cargo:rustc-link-lib=randomx"); //link to RandomX
 }
