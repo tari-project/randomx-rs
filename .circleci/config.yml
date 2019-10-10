@@ -1,0 +1,28 @@
+version: 2
+
+defaults:
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2019-09-13
+
+jobs:
+  tests:
+    docker:
+      - image: *rust_image
+    steps:
+      - checkout
+      - run:
+          name: RandomX-rs source code
+          command: |
+            TOOLCHAIN_VERSION=nightly-2019-09-13
+            rustup component add --toolchain $TOOLCHAIN_VERSION rustfmt
+            cargo fmt --all -- --check
+            cargo test --all
+            cargo test --release
+
+workflows:
+  version: 2
+  workflow:
+    jobs:
+      - tests:
+          filters:
+            branches:
+              ignore: gh-pages
