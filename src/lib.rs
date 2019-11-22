@@ -46,7 +46,7 @@ pub enum RandomXFlag {
 }
 
 impl RandomXFlag {
-    pub fn value(self) -> c_uint {
+    pub fn value(self) -> u32 {
         match self {
             RandomXFlag::FlagDefault => 0,
             RandomXFlag::FlagLargePages => 1,
@@ -108,6 +108,7 @@ impl RandomXCache {
             let key_ptr = key.as_bytes().as_ptr() as *mut c_void;
             let key_size = key.as_bytes().len() * mem::size_of::<*const c_char>();
             unsafe {
+                //no way to check if this fails, c code does not return anything
                 randomx_init_cache(result.cache, key_ptr, key_size);
             }
             Ok(result)
@@ -154,23 +155,30 @@ impl RandomXDataset {
                 dataset_count: count,
             };
             unsafe {
+                //no way to check if this fails, c code does not return anything
                 randomx_init_dataset(result.dataset, cache.cache, start, count);
             }
             Ok(result)
         }
     }
 
-    pub fn count(&self) -> c_ulong {
-        unsafe { randomx_dataset_item_count() }
+    pub fn count(&self) -> Result<u64, CreationError> {
+        match unsafe { randomx_dataset_item_count() } {
+            0 => Err(CreationError),
+            x => Ok(x),
+        }
     }
 
-    pub fn get_data(&self) -> Vec<u8> {
+    pub fn get_data(&self) -> Result<Vec<u8>, CreationError> {
         let memory = unsafe { randomx_get_dataset_memory(self.dataset) };
+        if memory.is_null() {
+            return Err(CreationError);
+        }
         let mut result = Vec::new();
         for i in self.dataset_start..self.dataset_count {
             result.push(unsafe { memory.offset(i as isize) } as u8);
         }
-        result
+        Ok(result)
     }
 }
 
@@ -210,18 +218,20 @@ impl RandomXVM {
     }
 
     pub fn reinit_cache(&self, cache: &RandomXCache) {
+        //no way to check if this fails, c code does not return anything
         unsafe {
             randomx_vm_set_cache(self.vm, cache.cache);
         }
     }
 
     pub fn reinit_dataset(&self, dataset: &RandomXDataset) {
+        //no way to check if this fails, c code does not return anything
         unsafe {
             randomx_vm_set_dataset(self.vm, dataset.dataset);
         }
     }
 
-    pub fn calculate_hash(&self, input: &str) -> Vec<u8> {
+    pub fn calculate_hash(&self, input: &str) -> Result<Vec<u8>, CreationError> {
         let size_input = input.as_bytes().len() * mem::size_of::<*const c_char>();
         let input_ptr = input.as_bytes().as_ptr() as *mut c_void;
         let arr = [0; RANDOMX_HASH_SIZE as usize];
@@ -229,12 +239,16 @@ impl RandomXVM {
         unsafe {
             randomx_calculate_hash(self.vm, input_ptr, size_input, output_ptr);
         }
+        // if this failed, arr should still be empty
+        if arr == [0; RANDOMX_HASH_SIZE as usize] {
+            return Err(CreationError);
+        }
         let mut result = Vec::new();
 
         for i in 0..RANDOMX_HASH_SIZE {
             result.push(arr[i as usize] as u8);
         }
-        result
+        Ok(result)
     }
 }
 
@@ -289,7 +303,9 @@ mod tests {
         flags.push(RandomXFlag::FlagDefault);
         let cache = RandomXCache::new(flags.clone(), key).unwrap();
         let dataset = RandomXDataset::new(flags.clone(), &cache, 0).unwrap();
-        let memory = dataset.get_data();
+        let memory_result = dataset.get_data();
+        assert_eq!(memory_result.is_ok(), true);
+        let memory = memory_result.unwrap();
         let mut vec: Vec<u8> = Vec::new();
         for i in 0..memory.len() - 1 {
             vec.push(i as u8);
@@ -305,7 +321,9 @@ mod tests {
         flags.push(RandomXFlag::FlagDefault);
         let cache = RandomXCache::new(flags.clone(), key).unwrap();
         let vm = RandomXVM::new(flags.clone(), &cache, None).unwrap();
-        let mut hash = vm.calculate_hash(input);
+        let hash_result = vm.calculate_hash(input);
+        assert_eq!(hash_result.is_ok(), true);
+        let hash = hash_result.unwrap();
         let mut vec: Vec<u8> = Vec::new();
         for i in 0..hash.len() - 1 {
             vec.push(i as u8);
@@ -314,7 +332,9 @@ mod tests {
         vm.reinit_cache(&cache);
         let dataset = RandomXDataset::new(flags.clone(), &cache, 0).unwrap();
         vm.reinit_dataset(&dataset);
-        hash = vm.calculate_hash(input);
+        let hash_result = vm.calculate_hash(input);
+        assert_eq!(hash_result.is_ok(), true);
+        let hash = hash_result.unwrap();
         vec = Vec::new();
         for i in 0..hash.len() - 1 {
             vec.push(i as u8);
