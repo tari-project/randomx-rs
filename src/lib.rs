@@ -94,6 +94,9 @@ impl Drop for RandomXCache {
 
 impl RandomXCache {
     pub fn new(flags: Vec<RandomXFlag>, key: &str) -> Result<RandomXCache, CreationError> {
+        if key.len() == 0 {
+            return Err(CreationError);
+        };
         let mut flag: c_uint = RandomXFlag::FlagDefault.value();
         for f in flags {
             if f == RandomXFlag::FlagJIT || f == RandomXFlag::FlagLargePages {
@@ -154,6 +157,14 @@ impl RandomXDataset {
                 dataset_start: start,
                 dataset_count: count,
             };
+            let item_count = match result.count() {
+                Ok(v) => v,
+                Err(_) => return Err(CreationError),
+            };
+            // Mirror the assert checks inside randomx_init_dataset call
+            if !((start < item_count && count <= item_count) || (start + item_count <= count)) {
+                return Err(CreationError);
+            }
             unsafe {
                 //no way to check if this fails, c code does not return anything
                 randomx_init_dataset(result.dataset, cache.cache, start, count);
@@ -232,6 +243,9 @@ impl RandomXVM {
     }
 
     pub fn calculate_hash(&self, input: &str) -> Result<Vec<u8>, CreationError> {
+        if input.len() == 0 {
+            return Err(CreationError);
+        };
         let size_input = input.as_bytes().len() * mem::size_of::<*const c_char>();
         let input_ptr = input.as_bytes().as_ptr() as *mut c_void;
         let arr = [0; RANDOMX_HASH_SIZE as usize];
