@@ -149,11 +149,13 @@ impl RandomXDataset {
         if memory.is_null() {
             return Err(RandomXError::Other);
         }
-        let mut result = Vec::new();
+        let mut result: Vec<u8> = vec![0u8; self.dataset_count as usize];
         unsafe {
-            for i in self.dataset_start..self.dataset_count {
-                result.push(memory.offset(i as isize) as u8);
-            }
+            libc::memcpy(
+                result.as_mut_ptr() as *mut c_void,
+                memory,
+                self.dataset_count as usize,
+            );
         }
         Ok(result)
     }
@@ -274,10 +276,7 @@ mod tests {
         let cache = RandomXCache::new(flags, key).unwrap();
         let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
         let memory = dataset.get_data().expect("no data");
-        let mut vec: Vec<u8> = Vec::new();
-        for i in 0..memory.len() - 1 {
-            vec.push(i as u8);
-        }
+        let vec = vec![0u8; memory.len() as usize];
         assert_ne!(memory, vec);
     }
 
@@ -289,19 +288,12 @@ mod tests {
         let cache = RandomXCache::new(flags, key).unwrap();
         let vm = RandomXVM::new(flags, &cache, None).unwrap();
         let hash = vm.calculate_hash(input).expect("no data");
-        let mut vec: Vec<u8> = Vec::new();
-        for i in 0..hash.len() - 1 {
-            vec.push(i as u8);
-        }
+        let vec = vec![0u8; hash.len() as usize];
         assert_ne!(hash, vec);
         vm.reinit_cache(&cache);
         let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
         vm.reinit_dataset(&dataset);
         let hash = vm.calculate_hash(input).expect("no data");
-        vec = Vec::new();
-        for i in 0..hash.len() - 1 {
-            vec.push(i as u8);
-        }
         assert_ne!(hash, vec);
     }
 }
