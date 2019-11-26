@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 mod bindings;
+#[macro_use]
+extern crate bitflags;
+extern crate libc;
 
 use bindings::{
     randomx_alloc_cache, randomx_alloc_dataset, randomx_cache, randomx_calculate_hash,
@@ -28,39 +31,20 @@ use bindings::{
     randomx_release_dataset, randomx_vm, randomx_vm_set_cache, randomx_vm_set_dataset,
     RANDOMX_DATASET_ITEM_SIZE, RANDOMX_HASH_SIZE,
 };
-use derive_error::Error;
 
+use derive_error::Error;
+use libc::{c_char, c_ulong, c_void};
 use std::mem;
-use std::os::raw::{c_char, c_uint, c_ulong, c_void};
 use std::ptr;
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub enum RandomXFlag {
-    FlagDefault,
-    FlagLargePages,
-    FlagHardAES,
-    FlagFullMem,
-    FlagJIT,
-    FlagSecure,
-}
-
-impl RandomXFlag {
-    pub fn value(self) -> u32 {
-        match self {
-            RandomXFlag::FlagDefault => 0,
-            RandomXFlag::FlagLargePages => 1,
-            RandomXFlag::FlagHardAES => 2,
-            RandomXFlag::FlagFullMem => 4,
-            RandomXFlag::FlagJIT => 8,
-            RandomXFlag::FlagSecure => 16,
-        }
-    }
-}
-
-impl PartialEq for RandomXFlag {
-    fn eq(&self, other: &Self) -> bool {
-        self.value() == other.value()
+bitflags! {
+    pub struct RandomXFlag: u32 {
+        const FLAG_DEFAULT =     0b00000000;
+        const FLAG_LARGE_PAGES = 0b00000001;
+        const PLAG_HARD_AES =    0b00000010;
+        const FLAG_FULL_MEM =    0b00000100;
+        const FLAG_JIT =         0b00001000;
+        const FLAG_SECURE =      0b00010000;
     }
 }
 
@@ -86,17 +70,11 @@ impl Drop for RandomXCache {
 }
 
 impl RandomXCache {
-    pub fn new(flags: Vec<RandomXFlag>, key: &str) -> Result<RandomXCache, RandomXError> {
+    pub fn new(flags: RandomXFlag, key: &str) -> Result<RandomXCache, RandomXError> {
         if key.len() == 0 {
             return Err(RandomXError::CreationError);
         };
-        let mut flag: c_uint = RandomXFlag::FlagDefault.value();
-        for f in flags {
-            if f == RandomXFlag::FlagJIT || f == RandomXFlag::FlagLargePages {
-                flag |= f.value();
-            }
-        }
-        let test = unsafe { randomx_alloc_cache(flag) };
+        let test = unsafe { randomx_alloc_cache(flags.bits) };
         if test.is_null() {
             Err(RandomXError::CreationError)
         } else {
@@ -129,19 +107,12 @@ impl Drop for RandomXDataset {
 
 impl RandomXDataset {
     pub fn new(
-        flags: Vec<RandomXFlag>,
+        flags: RandomXFlag,
         cache: &RandomXCache,
         start: c_ulong,
     ) -> Result<RandomXDataset, RandomXError> {
         let count = c_ulong::from(RANDOMX_DATASET_ITEM_SIZE - 1) - start;
-
-        let mut flag: c_uint = RandomXFlag::FlagDefault.value();
-        for f in flags {
-            if f == RandomXFlag::FlagLargePages {
-                flag |= f.value();
-            }
-        }
-        let test = unsafe { randomx_alloc_dataset(flag) };
+        let test = unsafe { randomx_alloc_dataset(flags.bits) };
         if test.is_null() {
             Err(RandomXError::CreationError)
         } else {
@@ -203,18 +174,16 @@ impl Drop for RandomXVM {
 
 impl RandomXVM {
     pub fn new(
-        flags: Vec<RandomXFlag>,
+        flags: RandomXFlag,
         cache: &RandomXCache,
         dataset: Option<&RandomXDataset>,
     ) -> Result<RandomXVM, RandomXError> {
-        let mut flag: c_uint = RandomXFlag::FlagDefault.value();
-        for f in flags {
-            flag |= f.value();
-        }
         let test: *mut randomx_vm;
         match dataset {
-            Some(data) => unsafe { test = randomx_create_vm(flag, cache.cache, data.dataset) },
-            None => unsafe { test = randomx_create_vm(flag, cache.cache, ptr::null_mut()) },
+            Some(data) => unsafe {
+                test = randomx_create_vm(flags.bits, cache.cache, data.dataset)
+            },
+            None => unsafe { test = randomx_create_vm(flags.bits, cache.cache, ptr::null_mut()) },
         }
         if test.is_null() {
             return Err(RandomXError::CreationError);
@@ -252,25 +221,20 @@ impl RandomXVM {
         if arr == [0; RANDOMX_HASH_SIZE as usize] {
             return Err(RandomXError::Other);
         }
-        let mut result = Vec::new();
-
-        for i in 0..RANDOMX_HASH_SIZE {
-            result.push(arr[i as usize] as u8);
-        }
+        let result = arr.to_vec();
         Ok(result)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{RandomXCache, RandomXDataset, RandomXFlag, RandomXVM};
 
     #[test]
     fn lib_alloc_cache() {
-        let mut flags = Vec::new();
+        let flags = RandomXFlag::FLAG_DEFAULT;
         let key = "Key";
-        flags.push(RandomXFlag::FlagDefault);
-        let cache = RandomXCache::new(flags.clone(), key);
+        let cache = RandomXCache::new(flags, key);
         if let Err(i) = cache {
             panic!(format!("Failed to allocate cache, {}", i));
         }
@@ -278,11 +242,10 @@ mod tests {
 
     #[test]
     fn lib_alloc_dataset() {
-        let mut flags = Vec::new();
+        let flags = RandomXFlag::FLAG_DEFAULT;
         let key = "Key";
-        flags.push(RandomXFlag::FlagDefault);
-        let cache = RandomXCache::new(flags.clone(), key).unwrap();
-        let dataset = RandomXDataset::new(flags.clone(), &cache, 0);
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0);
         if let Err(i) = dataset {
             panic!(format!("Failed to allocate dataset, {}", i));
         }
@@ -290,15 +253,14 @@ mod tests {
 
     #[test]
     fn lib_alloc_vm() {
-        let mut flags = Vec::new();
+        let flags = RandomXFlag::FLAG_DEFAULT;
         let key = "Key";
-        flags.push(RandomXFlag::FlagDefault);
-        let cache = RandomXCache::new(flags.clone(), key).unwrap();
-        let mut vm = RandomXVM::new(flags.clone(), &cache, None);
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let mut vm = RandomXVM::new(flags, &cache, None);
         if let Err(i) = vm {
             panic!(format!("Failed to allocate vm, {}", i));
         }
-        let dataset = RandomXDataset::new(flags.clone(), &cache, 0).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
         vm = RandomXVM::new(flags, &cache, Some(&dataset));
         if let Err(i) = vm {
             panic!(format!("Failed to allocate vm, {}", i));
@@ -307,11 +269,10 @@ mod tests {
 
     #[test]
     fn lib_dataset_memory() {
-        let mut flags = Vec::new();
+        let flags = RandomXFlag::FLAG_DEFAULT;
         let key = "Key";
-        flags.push(RandomXFlag::FlagDefault);
-        let cache = RandomXCache::new(flags.clone(), key).unwrap();
-        let dataset = RandomXDataset::new(flags.clone(), &cache, 0).unwrap();
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
         let memory = dataset.get_data().expect("no data");
         let mut vec: Vec<u8> = Vec::new();
         for i in 0..memory.len() - 1 {
@@ -322,12 +283,11 @@ mod tests {
 
     #[test]
     fn lib_calculate_hash() {
-        let mut flags = Vec::new();
+        let flags = RandomXFlag::FLAG_DEFAULT;
         let key = "Key";
         let input = "Input";
-        flags.push(RandomXFlag::FlagDefault);
-        let cache = RandomXCache::new(flags.clone(), key).unwrap();
-        let vm = RandomXVM::new(flags.clone(), &cache, None).unwrap();
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let vm = RandomXVM::new(flags, &cache, None).unwrap();
         let hash = vm.calculate_hash(input).expect("no data");
         let mut vec: Vec<u8> = Vec::new();
         for i in 0..hash.len() - 1 {
@@ -335,7 +295,7 @@ mod tests {
         }
         assert_ne!(hash, vec);
         vm.reinit_cache(&cache);
-        let dataset = RandomXDataset::new(flags.clone(), &cache, 0).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
         vm.reinit_dataset(&dataset);
         let hash = vm.calculate_hash(input).expect("no data");
         vec = Vec::new();
