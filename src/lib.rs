@@ -30,7 +30,6 @@ use bindings::{
 };
 use derive_error::Error;
 
-
 use std::mem;
 use std::os::raw::{c_char, c_uint, c_ulong, c_void};
 use std::ptr;
