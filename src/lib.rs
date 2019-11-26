@@ -29,8 +29,8 @@ use bindings::{
     RANDOMX_DATASET_ITEM_SIZE, RANDOMX_HASH_SIZE,
 };
 use derive_error::Error;
-use std::error;
-use std::fmt;
+
+
 use std::mem;
 use std::os::raw::{c_char, c_uint, c_ulong, c_void};
 use std::ptr;
