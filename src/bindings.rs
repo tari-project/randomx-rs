@@ -43,8 +43,8 @@ pub struct randomx_vm {
     _unused: [u8; 0],
 }
 
-#[link(name = "c++", kind = "dylib")]
-#[link(name = "randomx", kind = "static")]
+//#[link(name = "c++", kind = "dylib")]
+//#[link(name = "randomx", kind = "static")]
 extern "C" {
     pub fn randomx_alloc_cache(flags: c_uint) -> *mut randomx_cache;
     pub fn randomx_init_cache(
