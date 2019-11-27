@@ -263,7 +263,7 @@ impl RandomXVM {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{RandomXCache, RandomXDataset, RandomXFlag, RandomXVM};
 
     #[test]
     fn lib_alloc_cache() {
