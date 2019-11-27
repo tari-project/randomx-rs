@@ -12,7 +12,8 @@ build="build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-crate-type = ["cdylib"]
+# Create a dynamic library for C usage and a rust library so it can be called from rust
+crate-type = ["cdylib","lib"]
 
 [dependencies]
 libc = "0.2.62"
