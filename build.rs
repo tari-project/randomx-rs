@@ -24,6 +24,7 @@ extern crate git2;
 use git2::{Cred, Oid, Repository};
 use std::env;
 use std::fs::create_dir_all;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
@@ -60,29 +61,72 @@ fn main() {
     }
 
     env::set_current_dir(Path::new(&repo_dir)).unwrap(); //change current path to repo for dependency build
+    let target = env::var("TARGET").unwrap();
+    if target.contains("windows") {
+        let c = Command::new("cmake")
+            .arg("-G")
+            .arg("Visual Studio 16 2019")
+            .arg(".")
+            .output()
+            .expect("failed to execute CMake");
+        println!("status: {}", c.status);
+        std::io::stdout().write_all(&c.stdout).unwrap();
+        std::io::stderr().write_all(&c.stderr).unwrap();
+        assert!(c.status.success());
 
-    let _ = Command::new("cmake")
-        .arg("-DARCH=native")
-        .arg(".")
-        .output()
-        .expect("failed to execute CMake");
-
-    Command::new("make")
-        .output()
-        .expect("failed to execute Make");
+        let m = Command::new("cmake")
+            .arg("--build")
+            .arg(".")
+            .arg("--config")
+            .arg("Release")
+            .output()
+            .expect("failed to execute Make");
+        println!("status: {}", m.status);
+        std::io::stdout().write_all(&m.stdout).unwrap();
+        std::io::stderr().write_all(&m.stderr).unwrap();
+        assert!(m.status.success());
+    } else {
+        let c = Command::new("cmake")
+            .arg("-DARCH=native")
+            .arg(".")
+            .output()
+            .expect("failed to execute CMake");
+        println!("status: {}", c.status);
+        std::io::stdout().write_all(&c.stdout).unwrap();
+        std::io::stderr().write_all(&c.stderr).unwrap();
+        assert!(c.status.success());
+        let m = Command::new("make")
+            .output()
+            .expect("failed to execute Make");
+        println!("status: {}", m.status);
+        std::io::stdout().write_all(&m.stdout).unwrap();
+        std::io::stderr().write_all(&m.stderr).unwrap();
+        assert!(m.status.success());
+    }
 
     env::set_current_dir(Path::new(&project_dir)).unwrap(); //change path back to main project
 
-    println!(
-        "cargo:rustc-link-search=native={}",
-        &repo_dir.to_str().unwrap()
-    );
-    println!("cargo:rustc-link-lib=randomx"); //link to RandomX
-    let target = env::var("TARGET").unwrap();
+    if target.contains("windows") {
+        let include = &repo_dir.join("Release");
+        println!(
+            "cargo:rustc-link-search=native={}",
+            &include.to_str().unwrap()
+        );
+        println!("cargo:rustc-link-lib=static=randomx");
+    } else {
+        println!(
+            "cargo:rustc-link-search=native={}",
+            &repo_dir.to_str().unwrap()
+        );
+        println!("cargo:rustc-link-lib=randomx");
+    } //link to RandomX
+
     if target.contains("apple") {
         println!("cargo:rustc-link-lib=dylib=c++");
     } else if target.contains("linux") {
         println!("cargo:rustc-link-lib=dylib=stdc++");
+    } else if target.contains("windows") {
+        //println!("cargo:rustc-link-lib=dylib=c++");
     } else {
         unimplemented!();
     }

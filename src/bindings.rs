@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern crate libc;
 
-use libc::c_uint;
+use libc::{c_uint, c_ulong, c_void};
 pub const RANDOMX_HASH_SIZE: u32 = 32;
 pub const RANDOMX_DATASET_ITEM_SIZE: u32 = 64;
 
@@ -47,22 +47,17 @@ pub struct randomx_vm {
 //#[link(name = "randomx", kind = "static")]
 extern "C" {
     pub fn randomx_alloc_cache(flags: c_uint) -> *mut randomx_cache;
-    pub fn randomx_init_cache(
-        cache: *mut randomx_cache,
-        key: *const ::std::os::raw::c_void,
-        keySize: usize,
-    );
+    pub fn randomx_init_cache(cache: *mut randomx_cache, key: *const c_void, keySize: usize);
     pub fn randomx_release_cache(cache: *mut randomx_cache);
     pub fn randomx_alloc_dataset(flags: c_uint) -> *mut randomx_dataset;
-    pub fn randomx_dataset_item_count() -> ::std::os::raw::c_ulong;
+    pub fn randomx_dataset_item_count() -> c_ulong;
     pub fn randomx_init_dataset(
         dataset: *mut randomx_dataset,
         cache: *mut randomx_cache,
-        start_item: ::std::os::raw::c_ulong,
-        item_count: ::std::os::raw::c_ulong,
+        start_item: c_ulong,
+        item_count: c_ulong,
     );
-    pub fn randomx_get_dataset_memory(dataset: *mut randomx_dataset)
-        -> *mut ::std::os::raw::c_void;
+    pub fn randomx_get_dataset_memory(dataset: *mut randomx_dataset) -> *mut c_void;
     pub fn randomx_release_dataset(dataset: *mut randomx_dataset);
     pub fn randomx_create_vm(
         flags: c_uint,
@@ -74,18 +69,18 @@ extern "C" {
     pub fn randomx_destroy_vm(machine: *mut randomx_vm);
     pub fn randomx_calculate_hash(
         machine: *mut randomx_vm,
-        input: *const ::std::os::raw::c_void,
+        input: *const c_void,
         input_size: usize,
-        output: *mut ::std::os::raw::c_void,
+        output: *mut c_void,
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use libc::{c_char, c_uint, c_void};
     use std::ffi::CString;
     use std::mem;
-    use std::os::raw::{c_char, c_uint, c_void};
     use std::ptr;
 
     type ArrType = [c_char; RANDOMX_HASH_SIZE as usize]; // arr_type is the type in C
@@ -105,6 +100,9 @@ mod tests {
         if cache.is_null() {
             panic!("Failed to init cache");
         }
+        unsafe {
+            randomx_release_cache(cache);
+        }
     }
 
     #[test]
@@ -121,8 +119,22 @@ mod tests {
         }
 
         let dataset = unsafe { randomx_alloc_dataset(flag) };
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1).into()) }
+
+        unsafe {
+            randomx_init_dataset(
+                dataset,
+                cache,
+                0,
+                (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong,
+            )
+        }
+
         assert_ne!(unsafe { randomx_dataset_item_count() }, 0);
+
+        unsafe {
+            randomx_release_dataset(dataset);
+            randomx_release_cache(cache);
+        }
     }
 
     #[test]
@@ -150,7 +162,14 @@ mod tests {
             panic!("Failed to re-init vm with new cache");
         }
         let dataset = unsafe { randomx_alloc_dataset(flag) };
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1).into()) }
+        unsafe {
+            randomx_init_dataset(
+                dataset,
+                cache,
+                0,
+                (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong,
+            )
+        }
         vm = unsafe { randomx_create_vm(flag, cache, dataset) };
         if vm.is_null() {
             panic!("Failed to init vm with dataset");
@@ -160,6 +179,11 @@ mod tests {
         }
         if vm.is_null() {
             panic!("Failed to re-init vm with new dataset");
+        }
+        unsafe {
+            randomx_release_dataset(dataset);
+            randomx_release_cache(cache);
+            randomx_destroy_vm(vm);
         }
     }
 
@@ -187,6 +211,7 @@ mod tests {
         }
 
         let dataset = unsafe { randomx_alloc_dataset(flag) };
+
         unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1).into()) }
 
         let vm = unsafe { randomx_create_vm(flag, cache, ptr::null_mut()) };
