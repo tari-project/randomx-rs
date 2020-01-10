@@ -30,6 +30,9 @@ apt-get install git cmake libc++-dev libc++abi-dev
 ```
 
 ### Windows
+
+Install [Git](https://git-scm.com/download/win)
+
 Install [CMake](https://cmake.org/download/)
 
 Install [Build Tools for Visual Studio 2019](

@@ -19,6 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//! # randomx-rs
+//!
+//! The `randomx-rs` crate provides bindings to the `RandomX` proof-of-work (PoW) system as well
+//! as the functionality to utilize these bindings
+//!
 mod bindings;
 #[macro_use]
 extern crate bitflags;
@@ -38,30 +43,47 @@ use std::mem;
 use std::ptr;
 
 bitflags! {
+/// Indicates to the RandomX library which configuration options to use
     pub struct RandomXFlag: u32 {
+    /// All flags not set, works on all platforms, however is the slowest
         const FLAG_DEFAULT =     0b00000000;
+    /// Allocate memory in large pages
         const FLAG_LARGE_PAGES = 0b00000001;
-        const PLAG_HARD_AES =    0b00000010;
+    /// Use hardware accelerated AES
+        const FLAG_HARD_AES =    0b00000010;
+    /// Use the full dataset
         const FLAG_FULL_MEM =    0b00000100;
+    /// Use JIT compilation support
         const FLAG_JIT =         0b00001000;
+    /// When combined with FLAG_JIT, the JIT pages are never writable and executable at the
+    /// same time
         const FLAG_SECURE =      0b00010000;
+    /// Optimize Argon2 for CPUs with the SSSE3 instruction set
+        const FLAG_ARGON2_SSSE3 =0b00100000;
+    /// Optimize Argon2 for CPUs with the AVX2 instruction set
+        const FLAG_ARGON2_AVX2  =0b01000000;
     }
 }
 
 #[derive(Debug, Clone, Error)]
+/// Custom error enum
 pub enum RandomXError {
-    // Problem creating the randomX VM
+    /// Problem creating the RandomX object
     CreationError,
-    // Problem running Random X
+    /// Problem with configuration flags
+    FlagConfigError,
+    /// Problem running RandomX
     Other,
 }
 
 #[derive(Debug)]
+/// Cache structure
 pub struct RandomXCache {
     cache: *mut randomx_cache,
 }
 
 impl Drop for RandomXCache {
+    /// De-allocates memory for the `cache` object
     fn drop(&mut self) {
         unsafe {
             randomx_release_cache(self.cache);
@@ -70,6 +92,18 @@ impl Drop for RandomXCache {
 }
 
 impl RandomXCache {
+    /// Creates a new cache object, allocates memory to the `cache` object and initializes it with
+    /// he key value, error on failure
+    ///
+    /// `flags` is any combination of the following two flags:
+    /// * FLAG_LARGE_PAGES
+    /// * FLAG_JIT
+    ///
+    /// and (optionally) one of the following flags (depending on instruction set supported)
+    /// * FLAG_ARGON2_SSSE3
+    /// * FLAG_ARGON2_AVX2
+    ///
+    /// `key` is a sequence of characters used to initialize SuperScalarHash
     pub fn new(flags: RandomXFlag, key: &str) -> Result<RandomXCache, RandomXError> {
         if key.len() == 0 {
             return Err(RandomXError::CreationError);
@@ -91,6 +125,7 @@ impl RandomXCache {
 }
 
 #[derive(Debug)]
+/// Dataset structure
 pub struct RandomXDataset {
     dataset: *mut randomx_dataset,
     dataset_start: c_ulong,
@@ -98,6 +133,7 @@ pub struct RandomXDataset {
 }
 
 impl Drop for RandomXDataset {
+    /// De-allocates memory for the `dataset` object
     fn drop(&mut self) {
         unsafe {
             randomx_release_dataset(self.dataset);
@@ -106,6 +142,14 @@ impl Drop for RandomXDataset {
 }
 
 impl RandomXDataset {
+    /// Creates a new dataset object, allocates memory to the `dataset` object and initializes it,
+    /// error on failure
+    ///
+    /// `flags` is one of the following:
+    /// * FLAG_DEFAULT
+    /// * FLAG_LARGE_PAGES
+    /// `cache` is a cache object
+    /// `start` is the item number where initialization should start, recommended to pass in 0
     pub fn new(
         flags: RandomXFlag,
         cache: &RandomXCache,
@@ -144,6 +188,7 @@ impl RandomXDataset {
         }
     }
 
+    /// Returns the number of items in the `dataset` or an error on failure
     pub fn count(&self) -> Result<u64, RandomXError> {
         match unsafe { randomx_dataset_item_count() } {
             0 => Err(RandomXError::Other),
@@ -151,6 +196,7 @@ impl RandomXDataset {
         }
     }
 
+    /// Returns the values of the internal memory buffer of the `dataset` or an error on failure
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
         let memory = unsafe { randomx_get_dataset_memory(self.dataset) };
         if memory.is_null() {
@@ -169,11 +215,13 @@ impl RandomXDataset {
 }
 
 #[derive(Debug)]
+/// VM structure
 pub struct RandomXVM {
     vm: *mut randomx_vm,
 }
 
 impl Drop for RandomXVM {
+    /// De-allocates memory for the `VM` object
     fn drop(&mut self) {
         unsafe {
             randomx_destroy_vm(self.vm);
@@ -182,10 +230,24 @@ impl Drop for RandomXVM {
 }
 
 impl RandomXVM {
+    /// Creates a new `VM` and initializes it, error on failure
+    ///
+    /// `flags` is any combination of the following 5 flags:
+    /// * FLAG_LARGE_PAGES
+    /// * FLAG_HARD_AES
+    /// * FLAG_FULL_MEM
+    /// * FLAG_JIT
+    /// * FLAG_SECURE
+    ///
+    /// Or
+    /// * FLAG_DEFAULT
+    ///
+    /// `cache` is a cache object, optional if FLAG_FULL_MEM is used
+    /// `dataset` is a dataset object, optional if FLAG_FULL_MEM is not used
     pub fn new(
         flags: RandomXFlag,
-        cache: &RandomXCache,
-        dataset: Option<&RandomXDataset>,
+        cache: &RandomXCache, //TODO Update to optional, check flags, on error return FlagConfigError
+        dataset: Option<&RandomXDataset>, //TODO check flags, on error return FlagConfigError
     ) -> Result<RandomXVM, RandomXError> {
         let test: *mut randomx_vm;
         match dataset {
@@ -201,6 +263,7 @@ impl RandomXVM {
         Ok(result)
     }
 
+    /// Re-initializes the `VM` with a new cache
     pub fn reinit_cache(&self, cache: &RandomXCache) {
         //no way to check if this fails, c code does not return anything
         unsafe {
@@ -208,6 +271,7 @@ impl RandomXVM {
         }
     }
 
+    /// Re-initializes the `VM` with a new dataset
     pub fn reinit_dataset(&self, dataset: &RandomXDataset) {
         //no way to check if this fails, c code does not return anything
         unsafe {
@@ -215,6 +279,9 @@ impl RandomXVM {
         }
     }
 
+    /// Calculates a RandomX hash value and returns it, error on failure
+    ///
+    /// `input` is a sequence of characters to be hashed
     pub fn calculate_hash(&self, input: &str) -> Result<Vec<u8>, RandomXError> {
         if input.len() == 0 {
             return Err(RandomXError::Other);
@@ -233,6 +300,12 @@ impl RandomXVM {
         let result = arr.to_vec();
         Ok(result)
     }
+
+    //TODO randomx_get_flags // get recommended flags for machine
+
+    //TODO paired functions to calculate multiple RandomX hashes more efficiently
+    //TODO pub fn randomx_calculate_hash_first // called for first input value
+    //TODO pub fn randomx_calculate_hash_next // outputs hash of previous input
 }
 
 #[cfg(test)]
