@@ -126,12 +126,19 @@ impl RandomXDataset {
                 Err(_) => return Err(RandomXError::CreationError),
             };
             // Mirror the assert checks inside randomx_init_dataset call
-            if !((start < item_count && count <= item_count) || (start + item_count <= count)) {
+            if !((start < (item_count as c_ulong) && count <= (item_count as c_ulong))
+                || (start + (item_count as c_ulong) <= count))
+            {
                 return Err(RandomXError::CreationError);
             }
             unsafe {
                 //no way to check if this fails, c code does not return anything
-                randomx_init_dataset(result.dataset, cache.cache, start, count);
+                randomx_init_dataset(
+                    result.dataset,
+                    cache.cache,
+                    start as c_ulong,
+                    count as c_ulong,
+                );
             }
             Ok(result)
         }
@@ -140,7 +147,7 @@ impl RandomXDataset {
     pub fn count(&self) -> Result<u64, RandomXError> {
         match unsafe { randomx_dataset_item_count() } {
             0 => Err(RandomXError::Other),
-            x => Ok(x),
+            x => Ok(x as u64),
         }
     }
 
@@ -240,6 +247,7 @@ mod tests {
         if let Err(i) = cache {
             panic!(format!("Failed to allocate cache, {}", i));
         }
+        drop(cache);
     }
 
     #[test]
@@ -251,6 +259,8 @@ mod tests {
         if let Err(i) = dataset {
             panic!(format!("Failed to allocate dataset, {}", i));
         }
+        drop(dataset);
+        drop(cache);
     }
 
     #[test]
@@ -262,11 +272,15 @@ mod tests {
         if let Err(i) = vm {
             panic!(format!("Failed to allocate vm, {}", i));
         }
+        drop(vm);
         let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
         vm = RandomXVM::new(flags, &cache, Some(&dataset));
         if let Err(i) = vm {
             panic!(format!("Failed to allocate vm, {}", i));
         }
+        drop(dataset);
+        drop(cache);
+        drop(vm);
     }
 
     #[test]
@@ -275,9 +289,14 @@ mod tests {
         let key = "Key";
         let cache = RandomXCache::new(flags, key).unwrap();
         let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
-        let memory = dataset.get_data().expect("no data");
+        let memory = dataset.get_data().unwrap_or(std::vec::Vec::new());
+        if memory.len() == 0 {
+            panic!("Failed to get dataset memory");
+        }
         let vec = vec![0u8; memory.len() as usize];
         assert_ne!(memory, vec);
+        drop(dataset);
+        drop(cache);
     }
 
     #[test]
@@ -295,5 +314,8 @@ mod tests {
         vm.reinit_dataset(&dataset);
         let hash = vm.calculate_hash(input).expect("no data");
         assert_ne!(hash, vec);
+        drop(dataset);
+        drop(cache);
+        drop(vm);
     }
 }
