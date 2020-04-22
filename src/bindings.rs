@@ -43,8 +43,6 @@ pub struct randomx_vm {
     _unused: [u8; 0],
 }
 
-//#[link(name = "c++", kind = "dylib")]
-//#[link(name = "randomx", kind = "static")]
 extern "C" {
     pub fn randomx_alloc_cache(flags: c_uint) -> *mut randomx_cache;
     pub fn randomx_init_cache(cache: *mut randomx_cache, key: *const c_void, keySize: usize);
@@ -73,6 +71,19 @@ extern "C" {
         input_size: usize,
         output: *mut c_void,
     );
+    pub fn randomx_calculate_hash_first(
+        machine: *mut randomx_vm,
+        input: *const c_void,
+        input_size: usize,
+    );
+    pub fn randomx_calculate_hash_next(
+        machine: *mut randomx_vm,
+        input_next: *const c_void,
+        input_size_next: usize,
+        output: *mut c_void,
+    );
+    pub fn randomx_calculate_hash_last(machine: *mut randomx_vm, output: *mut c_void);
+    pub fn randomx_get_flags() -> c_uint;
 }
 
 #[cfg(test)]
@@ -197,7 +208,7 @@ mod tests {
         let c_key = CString::new(key).unwrap();
         let c_input = CString::new(input).unwrap();
         let c_key_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
-        let c_input_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
+        let c_input_ptr = c_input.as_bytes().as_ptr() as *mut c_void;
 
         let arr: ArrType = [0; RANDOMX_HASH_SIZE as usize];
         let output_ptr = arr.as_ptr() as *mut c_void;
@@ -228,6 +239,94 @@ mod tests {
             vec2.push(0u8);
         }
         assert_ne!(vec, vec2); //vec2 is filled with 0
+        unsafe {
+            randomx_destroy_vm(vm);
+            randomx_release_cache(cache);
+        }
+    }
+
+    #[test]
+    fn calculate_hash_set() {
+        let key = "Key";
+        let input = "Input";
+        let input2 = "Input 2";
+        let input3 = "Input 3";
+
+        let flag: c_uint = 0;
+
+        let c_key = CString::new(key).unwrap();
+        let c_input = CString::new(input).unwrap();
+        let c_input2 = CString::new(input2).unwrap();
+        let c_input3 = CString::new(input3).unwrap();
+        let c_key_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
+        let c_input_ptr = c_input.as_bytes().as_ptr() as *mut c_void;
+        let c_input_ptr2 = c_input2.as_bytes().as_ptr() as *mut c_void;
+        let c_input_ptr3 = c_input3.as_bytes().as_ptr() as *mut c_void;
+
+        let arr: ArrType = [0; RANDOMX_HASH_SIZE as usize];
+        let output_ptr = arr.as_ptr() as *mut c_void;
+
+        let cache = unsafe { randomx_alloc_cache(flag) };
+        let size_key = c_key.as_bytes().len() * mem::size_of::<*const c_char>();
+        let size_input = c_input.as_bytes().len() * mem::size_of::<*const c_char>();
+        let size_input2 = c_input2.as_bytes().len() * mem::size_of::<*const c_char>();
+        let size_input3 = c_input3.as_bytes().len() * mem::size_of::<*const c_char>();
+
+        unsafe {
+            randomx_init_cache(cache, c_key_ptr, size_key);
+        }
+
+        let dataset = unsafe { randomx_alloc_dataset(flag) };
+
+        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1).into()) }
+
+        let vm = unsafe { randomx_create_vm(flag, cache, ptr::null_mut()) };
+
+        unsafe {
+            randomx_calculate_hash_first(vm, c_input_ptr, size_input);
+        }
+
+        let mut vec = Vec::new();
+        let mut vec2 = Vec::new();
+        let mut vec3 = Vec::new();
+
+        unsafe {
+            randomx_calculate_hash_next(vm, c_input_ptr2, size_input2, output_ptr);
+        }
+
+        for i in 0..RANDOMX_HASH_SIZE {
+            vec.push(arr[i as usize] as u8);
+            vec2.push(0u8);
+            vec3.push(arr[i as usize] as u8);
+        }
+        assert_ne!(vec, vec2); //vec2 is filled with 0
+
+        unsafe {
+            randomx_calculate_hash_next(vm, c_input_ptr3, size_input3, output_ptr);
+        }
+
+        for i in 0..RANDOMX_HASH_SIZE {
+            vec.push(arr[i as usize] as u8);
+            vec2.push(0u8);
+        }
+        assert_ne!(vec, vec2); //vec2 is filled with 0
+        assert_ne!(vec, vec3); //vec3 is previous hash
+
+        for i in 0..RANDOMX_HASH_SIZE {
+            vec3.push(arr[i as usize] as u8);
+        }
+
+        unsafe {
+            randomx_calculate_hash_last(vm, output_ptr);
+        }
+
+        for i in 0..RANDOMX_HASH_SIZE {
+            vec.push(arr[i as usize] as u8);
+            vec2.push(0u8);
+        }
+        assert_ne!(vec, vec2); //vec2 is filled with 0
+        assert_ne!(vec, vec3); //vec3 is previous hash
+
         unsafe {
             randomx_destroy_vm(vm);
             randomx_release_cache(cache);
