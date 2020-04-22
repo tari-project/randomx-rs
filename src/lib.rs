@@ -37,6 +37,10 @@ use bindings::{
     RANDOMX_DATASET_ITEM_SIZE, RANDOMX_HASH_SIZE,
 };
 
+use crate::bindings::{
+    randomx_calculate_hash_first, randomx_calculate_hash_last, randomx_calculate_hash_next,
+    randomx_get_flags,
+};
 use derive_error::Error;
 use libc::{c_char, c_ulong, c_void};
 use std::mem;
@@ -46,22 +50,31 @@ bitflags! {
 /// Indicates to the RandomX library which configuration options to use
     pub struct RandomXFlag: u32 {
     /// All flags not set, works on all platforms, however is the slowest
-        const FLAG_DEFAULT =     0b00000000;
+        const FLAG_DEFAULT =     0b0000_0000;
     /// Allocate memory in large pages
-        const FLAG_LARGE_PAGES = 0b00000001;
+        const FLAG_LARGE_PAGES = 0b0000_0001;
     /// Use hardware accelerated AES
-        const FLAG_HARD_AES =    0b00000010;
+        const FLAG_HARD_AES =    0b0000_0010;
     /// Use the full dataset
-        const FLAG_FULL_MEM =    0b00000100;
+        const FLAG_FULL_MEM =    0b0000_0100;
     /// Use JIT compilation support
-        const FLAG_JIT =         0b00001000;
+        const FLAG_JIT =         0b0000_1000;
     /// When combined with FLAG_JIT, the JIT pages are never writable and executable at the
     /// same time
-        const FLAG_SECURE =      0b00010000;
+        const FLAG_SECURE =      0b0001_0000;
     /// Optimize Argon2 for CPUs with the SSSE3 instruction set
-        const FLAG_ARGON2_SSSE3 =0b00100000;
+        const FLAG_ARGON2_SSSE3 =0b0010_0000;
     /// Optimize Argon2 for CPUs with the AVX2 instruction set
-        const FLAG_ARGON2_AVX2  =0b01000000;
+        const FLAG_ARGON2_AVX2  =0b0100_0000;
+    /// Optimize Argon2 for CPUs without the AVX2 or SSSE3 instruction sets
+        const FLAG_ARGON2       =0b0110_0000;
+    }
+}
+
+impl Default for RandomXFlag {
+    /// Default value for RandomXFlag
+    fn default() -> RandomXFlag {
+        RandomXFlag::FLAG_DEFAULT
     }
 }
 
@@ -72,6 +85,8 @@ pub enum RandomXError {
     CreationError,
     /// Problem with configuration flags
     FlagConfigError,
+    /// Problem with parameters supplied
+    ParameterError,
     /// Problem running RandomX
     Other,
 }
@@ -105,7 +120,7 @@ impl RandomXCache {
     ///
     /// `key` is a sequence of characters used to initialize SuperScalarHash
     pub fn new(flags: RandomXFlag, key: &str) -> Result<RandomXCache, RandomXError> {
-        if key.len() == 0 {
+        if key.is_empty() {
             return Err(RandomXError::CreationError);
         };
         let test = unsafe { randomx_alloc_cache(flags.bits) };
@@ -283,8 +298,8 @@ impl RandomXVM {
     ///
     /// `input` is a sequence of characters to be hashed
     pub fn calculate_hash(&self, input: &str) -> Result<Vec<u8>, RandomXError> {
-        if input.len() == 0 {
-            return Err(RandomXError::Other);
+        if input.is_empty() {
+            return Err(RandomXError::ParameterError);
         };
         let size_input = input.as_bytes().len() * mem::size_of::<*const c_char>();
         let input_ptr = input.as_bytes().as_ptr() as *mut c_void;
@@ -301,11 +316,92 @@ impl RandomXVM {
         Ok(result)
     }
 
-    //TODO randomx_get_flags // get recommended flags for machine
+    /// Returns the recommended flags to be used.
+    /// Does not include:
+    /// * FLAG_LARGE_PAGES
+    /// * FLAG_FULL_MEM
+    /// * FLAG_SECURE
+    /// These flags need to be set manually if required
+    pub fn get_flags() -> RandomXFlag {
+        // c code will always return a value
+        RandomXFlag {
+            bits: unsafe { randomx_get_flags() },
+        }
+    }
 
-    //TODO paired functions to calculate multiple RandomX hashes more efficiently
-    //TODO pub fn randomx_calculate_hash_first // called for first input value
-    //TODO pub fn randomx_calculate_hash_next // outputs hash of previous input
+    /// Calculates hashes form a set of inputs
+    ///
+    /// `input` is an array of a sequence of characters to be hashed
+    #[allow(clippy::needless_range_loop)] // Range loop is not only for indexing `input`
+    pub fn calculate_hash_set(&self, input: &[&str]) -> Result<Vec<Vec<u8>>, RandomXError> {
+        if input.is_empty() {
+            // Empty set
+            return Err(RandomXError::ParameterError);
+        }
+
+        let mut result = Vec::new();
+        // For single input
+        if input.len() == 1 {
+            let hash_result = self.calculate_hash(input[0]);
+            return match hash_result {
+                Ok(hash) => {
+                    result.push(hash);
+                    Ok(result)
+                }
+                Err(e) => Err(e),
+            };
+        }
+
+        // For multiple inputs
+        let mut output_ptr: *mut c_void = ptr::null_mut();
+        let arr = [0; RANDOMX_HASH_SIZE as usize];
+
+        // Not len() as last iteration assigns final hash
+        let iterations = input.len() + 1;
+        for i in 0..iterations {
+            if i != iterations - 1 {
+                if input[i].is_empty() {
+                    // Stop calculations
+                    if arr != [0; RANDOMX_HASH_SIZE as usize] {
+                        // Complete what was started
+                        unsafe {
+                            randomx_calculate_hash_last(self.vm, output_ptr);
+                        }
+                    }
+                    return Err(RandomXError::ParameterError);
+                };
+                let size_input = input[i].as_bytes().len() * mem::size_of::<*const c_char>();
+                let input_ptr = input[i].as_bytes().as_ptr() as *mut c_void;
+                output_ptr = arr.as_ptr() as *mut c_void;
+                if i == 0 {
+                    // For first iteration
+                    unsafe {
+                        randomx_calculate_hash_first(self.vm, input_ptr, size_input);
+                    }
+                } else {
+                    unsafe {
+                        // For every other iteration
+                        randomx_calculate_hash_next(self.vm, input_ptr, size_input, output_ptr);
+                    }
+                }
+            } else {
+                // For last iteration
+                unsafe {
+                    randomx_calculate_hash_last(self.vm, output_ptr);
+                }
+            }
+
+            if i != 0 {
+                // First hash is only available in 2nd iteration
+                if arr == [0; RANDOMX_HASH_SIZE as usize] {
+                    return Err(RandomXError::Other);
+                }
+                let output: Vec<u8> = arr.to_vec();
+                result.push(output);
+            }
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -314,7 +410,7 @@ mod tests {
 
     #[test]
     fn lib_alloc_cache() {
-        let flags = RandomXFlag::FLAG_DEFAULT;
+        let flags = RandomXFlag::default();
         let key = "Key";
         let cache = RandomXCache::new(flags, key);
         if let Err(i) = cache {
@@ -325,7 +421,7 @@ mod tests {
 
     #[test]
     fn lib_alloc_dataset() {
-        let flags = RandomXFlag::FLAG_DEFAULT;
+        let flags = RandomXFlag::default();
         let key = "Key";
         let cache = RandomXCache::new(flags, key).unwrap();
         let dataset = RandomXDataset::new(flags, &cache, 0);
@@ -338,7 +434,7 @@ mod tests {
 
     #[test]
     fn lib_alloc_vm() {
-        let flags = RandomXFlag::FLAG_DEFAULT;
+        let flags = RandomXFlag::default();
         let key = "Key";
         let cache = RandomXCache::new(flags, key).unwrap();
         let mut vm = RandomXVM::new(flags, &cache, None);
@@ -358,7 +454,7 @@ mod tests {
 
     #[test]
     fn lib_dataset_memory() {
-        let flags = RandomXFlag::FLAG_DEFAULT;
+        let flags = RandomXFlag::default();
         let key = "Key";
         let cache = RandomXCache::new(flags, key).unwrap();
         let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
@@ -374,7 +470,7 @@ mod tests {
 
     #[test]
     fn lib_calculate_hash() {
-        let flags = RandomXFlag::FLAG_DEFAULT;
+        let flags = RandomXFlag::default();
         let key = "Key";
         let input = "Input";
         let cache = RandomXCache::new(flags, key).unwrap();
@@ -388,6 +484,29 @@ mod tests {
         let hash = vm.calculate_hash(input).expect("no data");
         assert_ne!(hash, vec);
         drop(dataset);
+        drop(cache);
+        drop(vm);
+    }
+
+    #[test]
+    fn lib_calculate_hash_set() {
+        let flags = RandomXFlag::default();
+        let key = "Key";
+        let mut inputs = Vec::new();
+        inputs.push("Input");
+        inputs.push("Input 2");
+        inputs.push("Inputs 3");
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let vm = RandomXVM::new(flags, &cache, None).unwrap();
+        let hashes = vm.calculate_hash_set(inputs.as_slice()).expect("no data");
+        assert_eq!(inputs.len(), hashes.len());
+        let mut prev_hash = Vec::new();
+        for hash in hashes {
+            let vec = vec![0u8; hash.len() as usize];
+            assert_ne!(hash, vec);
+            assert_ne!(hash, prev_hash);
+            prev_hash = hash;
+        }
         drop(cache);
         drop(vm);
     }

@@ -29,7 +29,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    const RANDOMX_COMMIT: &str = "fd96d3df22ba5feea1b590cbaa92576fddd06f8c";
+    const RANDOMX_COMMIT: &str = "ac574e3743b00680445994cbe2c38ba0f52db70d";
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let project_dir = Path::new(&out_dir);
@@ -41,7 +41,7 @@ fn main() {
 
         // If we're inside CircleCI, use SSH (Circle requires this), otherwise good ol' https will do just fine
         let repo = match env::var("CIRCLECI") {
-            Ok(v) if v == "true".to_string() => build_using_ssh(&repo_dir),
+            Ok(v) if &v == "true" => build_using_ssh(&repo_dir),
             _ => build_using_https(&repo_dir),
         };
 
@@ -145,18 +145,16 @@ fn build_using_ssh(path: &Path) -> Repository {
 
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fo);
-    let repo = match builder.clone(url, &path) {
+    match builder.clone(url, &path) {
         Ok(repo) => repo,
         Err(e) => panic!("Failed to clone RandomX: {}", e),
-    };
-    repo
+    }
 }
 
 fn build_using_https(path: &Path) -> Repository {
     let url = "https://github.com/tevador/RandomX.git";
-    let repo = match Repository::clone(url, &path) {
+    match Repository::clone(url, &path) {
         Ok(repo) => repo,
         Err(e) => panic!("Failed to clone RandomX: {}", e),
-    };
-    repo
+    }
 }
