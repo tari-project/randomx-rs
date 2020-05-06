@@ -87,7 +87,6 @@ fn main() {
         assert!(m.status.success());
     } else {
         let c = Command::new("cmake")
-            .arg("-DARCH=native")
             .arg(".")
             .output()
             .expect("failed to execute CMake");
