@@ -94,7 +94,7 @@ impl Default for RandomXFlag {
     }
 }
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Error, PartialEq)]
 /// Custom error enum
 pub enum RandomXError {
     /// Problem creating the RandomX object
