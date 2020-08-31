@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/randomx-rs"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2018"
 build="build.rs"
 
@@ -19,6 +19,7 @@ crate-type = ["cdylib","lib"]
 libc = "0.2.62"
 derive-error = "0.0.4"
 bitflags = "1.2.1"
+num_cpus = "1.13.0"
 
 [build-dependencies]
 git2 = "0.8"

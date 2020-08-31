@@ -29,7 +29,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    const RANDOMX_COMMIT: &str = "ac574e3743b00680445994cbe2c38ba0f52db70d";
+    const RANDOMX_COMMIT: &str = "5ce5f4906c1eb166be980f6d83cc80f4112ffc2a";
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let project_dir = Path::new(&out_dir);
