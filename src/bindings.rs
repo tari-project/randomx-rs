@@ -22,6 +22,7 @@
 extern crate libc;
 
 use libc::{c_uint, c_ulong, c_void};
+
 pub const RANDOMX_HASH_SIZE: u32 = 32;
 pub const RANDOMX_DATASET_ITEM_SIZE: u32 = 64;
 
@@ -31,11 +32,17 @@ pub struct randomx_dataset {
     _unused: [u8; 0],
 }
 
+unsafe impl Send for randomx_dataset {}
+unsafe impl Sync for randomx_dataset {}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct randomx_cache {
     _unused: [u8; 0],
 }
+
+unsafe impl Send for randomx_cache {}
+unsafe impl Sync for randomx_cache {}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

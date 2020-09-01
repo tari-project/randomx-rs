@@ -28,6 +28,7 @@ mod bindings;
 #[macro_use]
 extern crate bitflags;
 extern crate libc;
+extern crate num_cpus;
 
 use bindings::{
     randomx_alloc_cache, randomx_alloc_dataset, randomx_cache, randomx_calculate_hash,
@@ -42,8 +43,9 @@ use crate::bindings::{
     randomx_get_flags,
 };
 use derive_error::Error;
-use libc::{c_ulong, c_void};
-use std::ptr;
+use libc::{c_ulong, c_ushort, c_void};
+use std::sync::Arc;
+use std::{ptr, thread};
 
 bitflags! {
 /// Indicates to the RandomX library which configuration options to use.
@@ -68,6 +70,13 @@ bitflags! {
     /// Optimize Argon2 for CPUs without the AVX2 or SSSE3 instruction sets
         const FLAG_ARGON2       =0b0110_0000;
     }
+}
+
+fn check_range(start: c_ulong, item_count: c_ulong, count: c_ulong) -> Result<(), RandomXError> {
+    if !((start < (item_count) && count <= (item_count)) || (start + (item_count) <= count)) {
+        return Err(RandomXError::CreationError);
+    }
+    Ok(())
 }
 
 impl RandomXFlag {
@@ -113,11 +122,16 @@ pub struct RandomXCache {
     cache: *mut randomx_cache,
 }
 
+unsafe impl Send for RandomXCache {}
+unsafe impl Sync for RandomXCache {}
+
 impl Drop for RandomXCache {
     /// De-allocates memory for the `cache` object
     fn drop(&mut self) {
-        unsafe {
-            randomx_release_cache(self.cache);
+        if !self.cache.is_null() {
+            unsafe {
+                randomx_release_cache(self.cache);
+            }
         }
     }
 }
@@ -163,11 +177,16 @@ pub struct RandomXDataset {
     dataset_count: c_ulong,
 }
 
+unsafe impl Sync for RandomXDataset {}
+unsafe impl Send for RandomXDataset {}
+
 impl Drop for RandomXDataset {
     /// De-allocates memory for the `dataset` object.
     fn drop(&mut self) {
-        unsafe {
-            randomx_release_dataset(self.dataset);
+        if !self.dataset.is_null() {
+            unsafe {
+                randomx_release_dataset(self.dataset);
+            }
         }
     }
 }
@@ -202,12 +221,9 @@ impl RandomXDataset {
                 Ok(v) => v,
                 Err(_) => return Err(RandomXError::CreationError),
             };
-            // Mirror the assert checks inside randomx_init_dataset call
-            if !((start < (item_count as c_ulong) && count <= (item_count as c_ulong))
-                || (start + (item_count as c_ulong) <= count))
-            {
-                return Err(RandomXError::CreationError);
-            }
+
+            check_range(start, item_count, count)?;
+
             unsafe {
                 //no way to check if this fails, c code does not return anything
                 randomx_init_dataset(
@@ -218,6 +234,86 @@ impl RandomXDataset {
                 );
             }
             Ok(result)
+        }
+    }
+
+    pub fn new_multithreaded(
+        flags: RandomXFlag,
+        key: &[u8],
+        cores: c_ushort,
+    ) -> Result<(RandomXCache, RandomXDataset), RandomXError> {
+        let cache = RandomXCache::new(flags, key)?;
+        let dataset_ptr = unsafe { randomx_alloc_dataset(flags.bits) };
+        if dataset_ptr.is_null() {
+            Err(RandomXError::CreationError)
+        } else {
+            let start = 0;
+            let count = c_ulong::from(RANDOMX_DATASET_ITEM_SIZE - 1) - start;
+            let item_count = match unsafe { randomx_dataset_item_count() } {
+                0 => {
+                    return Err(RandomXError::Other);
+                }
+                x => x as u64,
+            };
+
+            check_range(start, item_count, count)?;
+
+            let mut threads = 1 as u64;
+            let max_cores = num_cpus::get();
+            if cores as usize <= max_cores && cores != 0 {
+                threads = cores as u64
+            }
+
+            let mut thread_handles = Vec::with_capacity(cores as usize);
+
+            let dataset = RandomXDataset {
+                dataset: dataset_ptr,
+                dataset_start: 0,
+                dataset_count: count,
+            };
+
+            let cache_arc = Arc::new(cache);
+            let dataset_arc = Arc::new(dataset);
+
+            let size = count / threads as u64;
+            let last = count % threads as u64;
+
+            for i in 0..threads {
+                let cache = cache_arc.clone();
+                let dataset = dataset_arc.clone();
+
+                let mut alloc_size = size;
+                if i == threads - 1 {
+                    alloc_size += last;
+                }
+                let alloc_start = start;
+                thread_handles.push(thread::spawn(move || unsafe {
+                    randomx_init_dataset(dataset.dataset, cache.cache, alloc_start, alloc_size)
+                }));
+            }
+
+            let mut err_count = 0;
+            for thread in thread_handles {
+                if thread.join().is_err() {
+                    err_count += 1;
+                }
+            }
+
+            if err_count > 0 {
+                return Err(RandomXError::CreationError);
+            }
+
+            let result_cache = match Arc::try_unwrap(cache_arc) {
+                Ok(x) => x,
+                Err(_) => return Err(RandomXError::CreationError),
+            };
+
+            let result_dataset = match Arc::try_unwrap(dataset_arc) {
+                Ok(x) => x,
+                Err(_) => return Err(RandomXError::CreationError),
+            };
+
+            Ok((result_cache, result_dataset))
         }
     }
 
@@ -257,8 +353,10 @@ pub struct RandomXVM {
 impl Drop for RandomXVM {
     /// De-allocates memory for the `VM` object.
     fn drop(&mut self) {
-        unsafe {
-            randomx_destroy_vm(self.vm);
+        if !self.vm.is_null() {
+            unsafe {
+                randomx_destroy_vm(self.vm);
+            }
         }
     }
 }
@@ -479,6 +577,18 @@ mod tests {
     }
 
     #[test]
+    fn lib_alloc_dataset_multithreaded() {
+        let flags = RandomXFlag::default();
+        let key = "Key";
+        let dataset =
+            RandomXDataset::new_multithreaded(flags, key.as_bytes(), num_cpus::get() as u16);
+        if let Err(i) = dataset {
+            panic!(format!("Failed to allocate dataset, {}", i));
+        }
+        drop(dataset);
+    }
+
+    #[test]
     fn lib_alloc_vm() {
         let flags = RandomXFlag::default();
         let key = "Key";
@@ -562,6 +672,34 @@ mod tests {
         drop(vm2);
         drop(vm3);
         drop(vm4);
+    }
+
+    #[test]
+    fn lib_calculate_hash_multithreaded_dataset() {
+        let flags = RandomXFlag::get_recommended_flags();
+        let key = "Key";
+        let input = "Input";
+        let (cache, dataset) =
+            RandomXDataset::new_multithreaded(flags, key.as_bytes(), num_cpus::get() as u16)
+                .unwrap();
+        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset)).unwrap();
+        let hash = vm.calculate_hash(input.as_bytes()).expect("no data");
+        let vec = vec![0u8; hash.len() as usize];
+        assert_ne!(hash, vec);
+
+        let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
+        let dataset1 = RandomXDataset::new(flags, &cache1, 0).unwrap();
+        let vm1 = RandomXVM::new(flags, Some(&cache1), Some(&dataset1)).unwrap();
+        let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
+        assert_ne!(hash1, vec);
+        assert_eq!(hash, hash1);
+        drop(dataset);
+        drop(dataset1);
+        drop(cache);
+        drop(cache1);
+        drop(vm);
+        drop(vm1);
+
     }
 
     #[test]
