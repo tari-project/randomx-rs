@@ -41,9 +41,9 @@ use crate::bindings::{
     randomx_calculate_hash_first, randomx_calculate_hash_last, randomx_calculate_hash_next,
     randomx_get_flags,
 };
-use derive_error::Error;
 use libc::{c_ulong, c_void};
 use std::ptr;
+use thiserror::Error;
 
 bitflags! {
 /// Indicates to the RandomX library which configuration options to use.
@@ -97,14 +97,14 @@ impl Default for RandomXFlag {
 #[derive(Debug, Clone, Error)]
 /// Custom error enum
 pub enum RandomXError {
-    /// Problem creating the RandomX object
-    CreationError,
-    /// Problem with configuration flags
-    FlagConfigError,
-    /// Problem with parameters supplied
-    ParameterError,
-    /// Problem running RandomX
-    Other,
+    #[error("Problem creating the RandomX object:{0}")]
+    CreationError(String),
+    #[error("Problem with configuration flags:{0}")]
+    FlagConfigError(String),
+    #[error("Problem with parameters supplied:{0}")]
+    ParameterError(String),
+    #[error("Unknown problem running RandomX:{0}")]
+    Other(String),
 }
 
 #[derive(Debug)]
@@ -137,11 +137,13 @@ impl RandomXCache {
     /// `key` is a sequence of u8 used to initialize SuperScalarHash.
     pub fn new(flags: RandomXFlag, key: &[u8]) -> Result<RandomXCache, RandomXError> {
         if key.is_empty() {
-            return Err(RandomXError::ParameterError);
+            return Err(RandomXError::ParameterError("key is empty".to_string()));
         };
         let test = unsafe { randomx_alloc_cache(flags.bits) };
         if test.is_null() {
-            Err(RandomXError::CreationError)
+            Err(RandomXError::CreationError(
+                "Could not allocate cache".to_string(),
+            ))
         } else {
             let result = RandomXCache { cache: test };
             let key_ptr = key.as_ptr() as *mut c_void;
@@ -191,7 +193,9 @@ impl RandomXDataset {
         let count = c_ulong::from(RANDOMX_DATASET_ITEM_SIZE - 1) - start;
         let test = unsafe { randomx_alloc_dataset(flags.bits) };
         if test.is_null() {
-            Err(RandomXError::CreationError)
+            Err(RandomXError::CreationError(
+                "Could not allocate dataset".to_string(),
+            ))
         } else {
             let result = RandomXDataset {
                 dataset: test,
@@ -200,13 +204,18 @@ impl RandomXDataset {
             };
             let item_count = match result.count() {
                 Ok(v) => v,
-                Err(_) => return Err(RandomXError::CreationError),
+                Err(err) => {
+                    return Err(RandomXError::CreationError(format!(
+                        "Could not get dataset count:{}",
+                        err
+                    )))
+                }
             };
             // Mirror the assert checks inside randomx_init_dataset call
             if !((start < (item_count as c_ulong) && count <= (item_count as c_ulong))
                 || (start + (item_count as c_ulong) <= count))
             {
-                return Err(RandomXError::CreationError);
+                return Err(RandomXError::CreationError(format!("Dataset `start` or `count` was out of bounds: start:{}, count:{}, actual count:{}", start,count, item_count)));
             }
             unsafe {
                 //no way to check if this fails, c code does not return anything
@@ -224,7 +233,7 @@ impl RandomXDataset {
     /// Returns the number of items in the `dataset` or an error on failure.
     pub fn count(&self) -> Result<u64, RandomXError> {
         match unsafe { randomx_dataset_item_count() } {
-            0 => Err(RandomXError::Other),
+            0 => Err(RandomXError::Other("Dataset item count was 0".to_string())),
             x => Ok(x as u64),
         }
     }
@@ -233,7 +242,9 @@ impl RandomXDataset {
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
         let memory = unsafe { randomx_get_dataset_memory(self.dataset) };
         if memory.is_null() {
-            return Err(RandomXError::Other);
+            return Err(RandomXError::Other(
+                "Could not get dataset memory".to_string(),
+            ));
         }
         let mut result: Vec<u8> = vec![0u8; self.dataset_count as usize];
         unsafe {
@@ -295,11 +306,15 @@ impl RandomXVM {
         }
 
         if cache.is_none() && !is_full_mem {
-            return Err(RandomXError::FlagConfigError);
+            return Err(RandomXError::FlagConfigError(
+                "No cache and FLAG_FULL_MEM not set".to_string(),
+            ));
         }
 
         if dataset.is_none() && is_full_mem {
-            return Err(RandomXError::FlagConfigError);
+            return Err(RandomXError::FlagConfigError(
+                "No dataset and FLAG_FULL_MEM set".to_string(),
+            ));
         }
 
         match cache {
@@ -320,7 +335,7 @@ impl RandomXVM {
         }
 
         if test.is_null() {
-            return Err(RandomXError::CreationError);
+            return Err(RandomXError::CreationError("Failed to allocate VM".to_string()));
         }
 
         let result = RandomXVM { vm: test, flags };
@@ -331,7 +346,9 @@ impl RandomXVM {
     /// RandomXFlag::FLAG_FULL_MEM.
     pub fn reinit_cache(&self, cache: &RandomXCache) -> Result<(), RandomXError> {
         if self.flags & RandomXFlag::FLAG_FULL_MEM == RandomXFlag::FLAG_FULL_MEM {
-            return Err(RandomXError::FlagConfigError);
+            return Err(RandomXError::FlagConfigError(
+                "Cannot reinit cache with FLAG_FULL_MEM set".to_string(),
+            ));
         }
         //no way to check if this fails, c code does not return anything
         unsafe {
@@ -344,7 +361,9 @@ impl RandomXVM {
     /// RandomXFlag::FLAG_FULL_MEM.
     pub fn reinit_dataset(&self, dataset: &RandomXDataset) -> Result<(), RandomXError> {
         if self.flags & RandomXFlag::FLAG_FULL_MEM != RandomXFlag::FLAG_FULL_MEM {
-            return Err(RandomXError::FlagConfigError);
+            return Err(RandomXError::FlagConfigError(
+                "Cannot reinit dataset without FLAG_FULL_MEM set".to_string(),
+            ));
         }
         //no way to check if this fails, c code does not return anything
         unsafe {
@@ -358,7 +377,7 @@ impl RandomXVM {
     /// `input` is a sequence of u8 to be hashed.
     pub fn calculate_hash(&self, input: &[u8]) -> Result<Vec<u8>, RandomXError> {
         if input.is_empty() {
-            return Err(RandomXError::ParameterError);
+            return Err(RandomXError::ParameterError("input was empty".to_string()));
         };
         let size_input = input.len() as usize;
         let input_ptr = input.as_ptr() as *mut c_void;
@@ -369,7 +388,9 @@ impl RandomXVM {
         }
         // if this failed, arr should still be empty
         if arr == [0; RANDOMX_HASH_SIZE as usize] {
-            return Err(RandomXError::Other);
+            return Err(RandomXError::Other(
+                "RandomX calculated hash was empty".to_string(),
+            ));
         }
         let result = arr.to_vec();
         Ok(result)
@@ -382,7 +403,7 @@ impl RandomXVM {
     pub fn calculate_hash_set(&self, input: &[&[u8]]) -> Result<Vec<Vec<u8>>, RandomXError> {
         if input.is_empty() {
             // Empty set
-            return Err(RandomXError::ParameterError);
+            return Err(RandomXError::ParameterError("input was empty".to_string()));
         }
 
         let mut result = Vec::new();
@@ -414,7 +435,7 @@ impl RandomXVM {
                             randomx_calculate_hash_last(self.vm, output_ptr);
                         }
                     }
-                    return Err(RandomXError::ParameterError);
+                    return Err(RandomXError::ParameterError("input was empty".to_string()));
                 };
                 let size_input = input[i].len() as usize;
                 let input_ptr = input[i].as_ptr() as *mut c_void;
@@ -440,7 +461,7 @@ impl RandomXVM {
             if i != 0 {
                 // First hash is only available in 2nd iteration
                 if arr == [0; RANDOMX_HASH_SIZE as usize] {
-                    return Err(RandomXError::Other);
+                    return Err(RandomXError::Other("RandomX hash was zero".to_string()));
                 }
                 let output: Vec<u8> = arr.to_vec();
                 result.push(output);
