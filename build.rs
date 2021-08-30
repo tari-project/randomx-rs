@@ -25,8 +25,9 @@ use git2::{Cred, Oid, Repository};
 use std::env;
 use std::fs::create_dir_all;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
 
 fn main() {
     const RANDOMX_COMMIT: &str = "5bfd021e8f976c4ab91bd0e933c889688e6a969c";
@@ -34,7 +35,7 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let project_dir = Path::new(&out_dir);
 
-    let repo_dir = project_dir.join("randomx");
+    let repo_dir = env::var("RANDOMX_DIR").map(|s| PathBuf::from(s)).unwrap_or(project_dir.join("randomx"));
 
     if !repo_dir.exists() {
         create_dir_all(&repo_dir.to_str().unwrap()).unwrap();
