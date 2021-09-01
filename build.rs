@@ -23,21 +23,26 @@ use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::fs;
 
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let project_dir = Path::new(&out_dir);
+    let cargo_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
-    let repo_dir = PathBuf::from(env::var("RANDOMX_DIR").unwrap_or_else(|_| "RandomX".to_string()));
+    let repo_dir = PathBuf::from(env::var("RANDOMX_DIR").unwrap_or_else(|_| format!("{}/RandomX", &cargo_dir)));
+    let build_dir = &project_dir.join("randomx_build");
 
     env::set_current_dir(Path::new(&repo_dir)).unwrap(); //change current path to repo for dependency build
+    let _ = fs::create_dir(&build_dir);  // path might exist
+    env::set_current_dir(build_dir).unwrap();               
     let target = env::var("TARGET").unwrap();
     if target.contains("windows") {
         let c = Command::new("cmake")
             .arg("-G")
             .arg("Visual Studio 16 2019")
-            .arg(".")
+            .arg(repo_dir.to_str().unwrap())
             .output()
             .expect("failed to execute CMake");
         println!("status: {}", c.status);
@@ -58,7 +63,7 @@ fn main() {
         assert!(m.status.success());
     } else {
         let c = Command::new("cmake")
-            .arg(".")
+            .arg(repo_dir.to_str().unwrap())
             .output()
             .expect("failed to execute CMake");
         println!("status: {}", c.status);
@@ -77,7 +82,7 @@ fn main() {
     env::set_current_dir(Path::new(&project_dir)).unwrap(); //change path back to main project
 
     if target.contains("windows") {
-        let include = &repo_dir.join("Release");
+        let include = &build_dir.join("Release");
         println!(
             "cargo:rustc-link-search=native={}",
             &include.to_str().unwrap()
@@ -86,7 +91,8 @@ fn main() {
     } else {
         println!(
             "cargo:rustc-link-search=native={}",
-            &repo_dir.to_str().unwrap()
+            &build_dir.to_str().unwrap()
+
         );
         println!("cargo:rustc-link-lib=static=randomx");
     } //link to RandomX
