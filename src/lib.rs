@@ -323,31 +323,33 @@ impl RandomXVM {
     /// Re-initializes the `VM` with a new cache that was initialised without
     /// RandomXFlag::FLAG_FULL_MEM.
     pub fn reinit_cache(&self, cache: &RandomXCache) -> Result<(), RandomXError> {
-        if self.flags & RandomXFlag::FLAG_FULL_MEM == RandomXFlag::FLAG_FULL_MEM {
-            return Err(RandomXError::FlagConfigError(
+        if !self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
+            //no way to check if this fails, c code does not return anything
+            unsafe {
+                randomx_vm_set_cache(self.vm, cache.cache);
+            }
+            Ok(())
+        } else {
+            Err(RandomXError::FlagConfigError(
                 "Cannot reinit cache with FLAG_FULL_MEM set".to_string(),
-            ));
+            ))
         }
-        //no way to check if this fails, c code does not return anything
-        unsafe {
-            randomx_vm_set_cache(self.vm, cache.cache);
-        }
-        Ok(())
     }
 
     /// Re-initializes the `VM` with a new dataset that was initialised with
     /// RandomXFlag::FLAG_FULL_MEM.
     pub fn reinit_dataset(&self, dataset: &RandomXDataset) -> Result<(), RandomXError> {
-        if self.flags & RandomXFlag::FLAG_FULL_MEM != RandomXFlag::FLAG_FULL_MEM {
-            return Err(RandomXError::FlagConfigError(
+        if self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
+            //no way to check if this fails, c code does not return anything
+            unsafe {
+                randomx_vm_set_dataset(self.vm, dataset.dataset);
+            }
+            Ok(())
+        } else {
+            Err(RandomXError::FlagConfigError(
                 "Cannot reinit dataset without FLAG_FULL_MEM set".to_string(),
-            ));
+            ))
         }
-        //no way to check if this fails, c code does not return anything
-        unsafe {
-            randomx_vm_set_dataset(self.vm, dataset.dataset);
-        }
-        Ok(())
     }
 
     /// Calculates a RandomX hash value and returns it, error on failure.
