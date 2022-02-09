@@ -481,7 +481,7 @@ mod tests {
         let key = "Key";
         let cache = RandomXCache::new(flags, key.as_bytes());
         if let Err(i) = cache {
-            panic!(format!("Failed to allocate cache, {}", i));
+            panic!("Failed to allocate cache, {}", i);
         }
         drop(cache);
     }
@@ -493,7 +493,7 @@ mod tests {
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset = RandomXDataset::new(flags, &cache, 0);
         if let Err(i) = dataset {
-            panic!(format!("Failed to allocate dataset, {}", i));
+            panic!("Failed to allocate dataset, {}", i);
         }
         drop(dataset);
         drop(cache);
@@ -506,13 +506,13 @@ mod tests {
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let mut vm = RandomXVM::new(flags, Some(&cache), None);
         if let Err(i) = vm {
-            panic!(format!("Failed to allocate vm, {}", i));
+            panic!("Failed to allocate vm, {}", i);
         }
         drop(vm);
         let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
         vm = RandomXVM::new(flags, Some(&cache), Some(&dataset));
         if let Err(i) = vm {
-            panic!(format!("Failed to allocate vm, {}", i));
+            panic!("Failed to allocate vm, {}", i);
         }
         drop(dataset);
         drop(cache);
