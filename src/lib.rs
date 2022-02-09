@@ -43,6 +43,7 @@ use crate::bindings::{
 };
 use libc::{c_ulong, c_void};
 use std::ptr;
+use std::sync::Arc;
 use thiserror::Error;
 
 bitflags! {
@@ -108,18 +109,23 @@ pub enum RandomXError {
 }
 
 #[derive(Debug)]
-/// Cache structure
-pub struct RandomXCache {
-    cache: *mut randomx_cache,
+pub struct RandomXCacheInner {
+    cache_ptr: *mut randomx_cache,
 }
 
-impl Drop for RandomXCache {
+impl Drop for RandomXCacheInner {
     /// De-allocates memory for the `cache` object
     fn drop(&mut self) {
         unsafe {
-            randomx_release_cache(self.cache);
+            randomx_release_cache(self.cache_ptr);
         }
     }
+}
+
+#[derive(Debug)]
+/// Cache structure
+pub struct RandomXCache {
+    inner: Arc<RandomXCacheInner>,
 }
 
 impl RandomXCache {
@@ -145,12 +151,13 @@ impl RandomXCache {
                 "Could not allocate cache".to_string(),
             ))
         } else {
-            let result = RandomXCache { cache: test };
+            let inner = RandomXCacheInner { cache_ptr: test };
+            let result = RandomXCache { inner: Arc::new(inner) };
             let key_ptr = key.as_ptr() as *mut c_void;
             let key_size = key.len() as usize;
             unsafe {
                 //no way to check if this fails, c code does not return anything
-                randomx_init_cache(result.cache, key_ptr, key_size);
+                randomx_init_cache(result.inner.cache_ptr, key_ptr, key_size);
             }
             Ok(result)
         }
@@ -221,7 +228,7 @@ impl RandomXDataset {
                 //no way to check if this fails, c code does not return anything
                 randomx_init_dataset(
                     result.dataset,
-                    cache.cache,
+                    cache.inner.cache_ptr,
                     start as c_ulong,
                     count as c_ulong,
                 );
@@ -312,7 +319,7 @@ impl RandomXVM {
                 ))
             }
             (cache, dataset) => {
-                let cache = cache.map(|stash| stash.cache).unwrap_or_else(ptr::null_mut);
+                let cache = cache.map(|stash| stash.inner.cache_ptr).unwrap_or_else(ptr::null_mut);
                 let dataset = dataset.map(|data| data.dataset).unwrap_or_else(ptr::null_mut);
                 let vm = unsafe { randomx_create_vm(flags.bits, cache, dataset) };
                 Ok(RandomXVM { vm, flags })
@@ -326,7 +333,7 @@ impl RandomXVM {
         if !self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
             //no way to check if this fails, c code does not return anything
             unsafe {
-                randomx_vm_set_cache(self.vm, cache.cache);
+                randomx_vm_set_cache(self.vm, cache.inner.cache_ptr);
             }
             Ok(())
         } else {
