@@ -296,33 +296,27 @@ impl RandomXVM {
         cache: Option<&RandomXCache>,
         dataset: Option<&RandomXDataset>,
     ) -> Result<RandomXVM, RandomXError> {
-        let mut is_full_mem = false;
-        let flag_full_mem = RandomXFlag::FLAG_FULL_MEM;
-
-        // intersection of flags
-        if flags & flag_full_mem == flag_full_mem {
-            is_full_mem = true;
-        }
-
-        if cache.is_none() && !is_full_mem {
-            return Err(RandomXError::FlagConfigError(
-                "No cache and FLAG_FULL_MEM not set".to_string(),
-            ));
-        }
-
-        if dataset.is_none() && is_full_mem {
-            return Err(RandomXError::FlagConfigError(
-                "No dataset and FLAG_FULL_MEM set".to_string(),
-            ));
-        }
-
-        if cache.is_some() || dataset.is_some() {
-            let cache = cache.map(|stash| stash.cache).unwrap_or_else(ptr::null_mut);
-            let dataset = dataset.map(|data| data.dataset).unwrap_or_else(ptr::null_mut);
-            let vm = unsafe { randomx_create_vm(flags.bits, cache, dataset) };
-            Ok(RandomXVM { vm, flags })
-        } else {
-            Err(RandomXError::CreationError("Failed to allocate VM".to_string()))
+        let is_full_mem = flags.contains(RandomXFlag::FLAG_FULL_MEM);
+        match (cache, dataset) {
+            (None, None) => {
+                Err(RandomXError::CreationError("Failed to allocate VM".to_string()))
+            }
+            (None, _) if !is_full_mem => {
+                Err(RandomXError::FlagConfigError(
+                    "No cache and FLAG_FULL_MEM not set".to_string(),
+                ))
+            }
+            (_, None) if is_full_mem => {
+                Err(RandomXError::FlagConfigError(
+                    "No dataset and FLAG_FULL_MEM set".to_string(),
+                ))
+            }
+            (cache, dataset) => {
+                let cache = cache.map(|stash| stash.cache).unwrap_or_else(ptr::null_mut);
+                let dataset = dataset.map(|data| data.dataset).unwrap_or_else(ptr::null_mut);
+                let vm = unsafe { randomx_create_vm(flags.bits, cache, dataset) };
+                Ok(RandomXVM { vm, flags })
+            }
         }
     }
 
