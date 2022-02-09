@@ -122,7 +122,7 @@ impl Drop for RandomXCacheInner {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Cache structure
 pub struct RandomXCache {
     inner: Arc<RandomXCacheInner>,
@@ -270,6 +270,7 @@ impl RandomXDataset {
 pub struct RandomXVM {
     flags: RandomXFlag,
     vm: *mut randomx_vm,
+    linked_cache: Option<RandomXCache>,
 }
 
 impl Drop for RandomXVM {
@@ -319,22 +320,27 @@ impl RandomXVM {
                 ))
             }
             (cache, dataset) => {
-                let cache = cache.map(|stash| stash.inner.cache_ptr).unwrap_or_else(ptr::null_mut);
-                let dataset = dataset.map(|data| data.dataset).unwrap_or_else(ptr::null_mut);
-                let vm = unsafe { randomx_create_vm(flags.bits, cache, dataset) };
-                Ok(RandomXVM { vm, flags })
+                let cache_ptr = cache.map(|stash| stash.inner.cache_ptr).unwrap_or_else(ptr::null_mut);
+                let dataset_ptr = dataset.map(|data| data.dataset).unwrap_or_else(ptr::null_mut);
+                let vm = unsafe { randomx_create_vm(flags.bits, cache_ptr, dataset_ptr) };
+                Ok(RandomXVM {
+                    vm,
+                    flags,
+                    linked_cache: cache.cloned(),
+                })
             }
         }
     }
 
     /// Re-initializes the `VM` with a new cache that was initialised without
     /// RandomXFlag::FLAG_FULL_MEM.
-    pub fn reinit_cache(&self, cache: &RandomXCache) -> Result<(), RandomXError> {
+    pub fn reinit_cache(&mut self, cache: &RandomXCache) -> Result<(), RandomXError> {
         if !self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
             //no way to check if this fails, c code does not return anything
             unsafe {
                 randomx_vm_set_cache(self.vm, cache.inner.cache_ptr);
             }
+            self.linked_cache = Some(cache.clone());
             Ok(())
         } else {
             Err(RandomXError::FlagConfigError(
@@ -529,7 +535,7 @@ mod tests {
         let key = "Key";
         let input = "Input";
         let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
-        let vm1 = RandomXVM::new(flags, Some(&cache1), None).unwrap();
+        let mut vm1 = RandomXVM::new(flags, Some(&cache1), None).unwrap();
         let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
         let vec = vec![0u8; hash1.len() as usize];
         assert_ne!(hash1, vec);
