@@ -152,7 +152,9 @@ impl RandomXCache {
             ))
         } else {
             let inner = RandomXCacheInner { cache_ptr: test };
-            let result = RandomXCache { inner: Arc::new(inner) };
+            let result = RandomXCache {
+                inner: Arc::new(inner),
+            };
             let key_ptr = key.as_ptr() as *mut c_void;
             let key_size = key.len() as usize;
             unsafe {
@@ -315,22 +317,22 @@ impl RandomXVM {
     ) -> Result<RandomXVM, RandomXError> {
         let is_full_mem = flags.contains(RandomXFlag::FLAG_FULL_MEM);
         match (cache, dataset) {
-            (None, None) => {
-                Err(RandomXError::CreationError("Failed to allocate VM".to_string()))
-            }
-            (None, _) if !is_full_mem => {
-                Err(RandomXError::FlagConfigError(
-                    "No cache and FLAG_FULL_MEM not set".to_string(),
-                ))
-            }
-            (_, None) if is_full_mem => {
-                Err(RandomXError::FlagConfigError(
-                    "No dataset and FLAG_FULL_MEM set".to_string(),
-                ))
-            }
+            (None, None) => Err(RandomXError::CreationError(
+                "Failed to allocate VM".to_string(),
+            )),
+            (None, _) if !is_full_mem => Err(RandomXError::FlagConfigError(
+                "No cache and FLAG_FULL_MEM not set".to_string(),
+            )),
+            (_, None) if is_full_mem => Err(RandomXError::FlagConfigError(
+                "No dataset and FLAG_FULL_MEM set".to_string(),
+            )),
             (cache, dataset) => {
-                let cache_ptr = cache.map(|stash| stash.inner.cache_ptr).unwrap_or_else(ptr::null_mut);
-                let dataset_ptr = dataset.map(|data| data.inner.dataset_ptr).unwrap_or_else(ptr::null_mut);
+                let cache_ptr = cache
+                    .map(|stash| stash.inner.cache_ptr)
+                    .unwrap_or_else(ptr::null_mut);
+                let dataset_ptr = dataset
+                    .map(|data| data.inner.dataset_ptr)
+                    .unwrap_or_else(ptr::null_mut);
                 let vm = unsafe { randomx_create_vm(flags.bits, cache_ptr, dataset_ptr) };
                 Ok(RandomXVM {
                     vm,
