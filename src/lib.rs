@@ -651,4 +651,40 @@ mod tests {
         drop(dataset1);
         drop(cache1);
     }
+
+    #[test]
+    fn lib_check_cache_and_dataset_lifetimes() {
+        let flags = RandomXFlag::get_recommended_flags();
+        let key = "Key";
+        let input = "Input";
+        let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
+        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset)).unwrap();
+        drop(dataset);
+        drop(cache);
+        let hash = vm.calculate_hash(input.as_bytes()).expect("no data");
+        assert_eq!(
+            hash,
+            [
+                114, 81, 192, 5, 165, 242, 107, 100, 184, 77, 37, 129, 52, 203, 217, 227, 65, 83,
+                215, 213, 59, 71, 32, 172, 253, 155, 204, 111, 183, 213, 157, 155
+            ]
+        );
+        drop(vm);
+
+        let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
+        let dataset1 = RandomXDataset::new(flags, &cache1, 0).unwrap();
+        let vm1 = RandomXVM::new(flags, Some(&cache1), Some(&dataset1)).unwrap();
+        drop(dataset1);
+        drop(cache1);
+        let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
+        assert_eq!(
+            hash1,
+            [
+                114, 81, 192, 5, 165, 242, 107, 100, 184, 77, 37, 129, 52, 203, 217, 227, 65, 83,
+                215, 213, 59, 71, 32, 172, 253, 155, 204, 111, 183, 213, 157, 155
+            ]
+        );
+        drop(vm1);
+    }
 }
