@@ -165,20 +165,25 @@ impl RandomXCache {
 }
 
 #[derive(Debug)]
-/// Dataset structure
-pub struct RandomXDataset {
-    dataset: *mut randomx_dataset,
+pub struct RandomXDatasetInner {
+    dataset_ptr: *mut randomx_dataset,
     dataset_start: c_ulong,
     dataset_count: c_ulong,
 }
 
-impl Drop for RandomXDataset {
+impl Drop for RandomXDatasetInner {
     /// De-allocates memory for the `dataset` object.
     fn drop(&mut self) {
         unsafe {
-            randomx_release_dataset(self.dataset);
+            randomx_release_dataset(self.dataset_ptr);
         }
     }
+}
+
+#[derive(Debug)]
+/// Dataset structure
+pub struct RandomXDataset {
+    inner: Arc<RandomXDatasetInner>,
 }
 
 impl RandomXDataset {
@@ -204,10 +209,13 @@ impl RandomXDataset {
                 "Could not allocate dataset".to_string(),
             ))
         } else {
-            let result = RandomXDataset {
-                dataset: test,
+            let inner = RandomXDatasetInner {
+                dataset_ptr: test,
                 dataset_start: start,
                 dataset_count: count,
+            };
+            let result = RandomXDataset {
+                inner: Arc::new(inner),
             };
             let item_count = match result.count() {
                 Ok(v) => v,
@@ -227,7 +235,7 @@ impl RandomXDataset {
             unsafe {
                 //no way to check if this fails, c code does not return anything
                 randomx_init_dataset(
-                    result.dataset,
+                    result.inner.dataset_ptr,
                     cache.inner.cache_ptr,
                     start as c_ulong,
                     count as c_ulong,
@@ -247,18 +255,18 @@ impl RandomXDataset {
 
     /// Returns the values of the internal memory buffer of the `dataset` or an error on failure.
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
-        let memory = unsafe { randomx_get_dataset_memory(self.dataset) };
+        let memory = unsafe { randomx_get_dataset_memory(self.inner.dataset_ptr) };
         if memory.is_null() {
             return Err(RandomXError::Other(
                 "Could not get dataset memory".to_string(),
             ));
         }
-        let mut result: Vec<u8> = vec![0u8; self.dataset_count as usize];
+        let mut result: Vec<u8> = vec![0u8; self.inner.dataset_count as usize];
         unsafe {
             libc::memcpy(
                 result.as_mut_ptr() as *mut c_void,
                 memory,
-                self.dataset_count as usize,
+                self.inner.dataset_count as usize,
             );
         }
         Ok(result)
@@ -321,7 +329,7 @@ impl RandomXVM {
             }
             (cache, dataset) => {
                 let cache_ptr = cache.map(|stash| stash.inner.cache_ptr).unwrap_or_else(ptr::null_mut);
-                let dataset_ptr = dataset.map(|data| data.dataset).unwrap_or_else(ptr::null_mut);
+                let dataset_ptr = dataset.map(|data| data.inner.dataset_ptr).unwrap_or_else(ptr::null_mut);
                 let vm = unsafe { randomx_create_vm(flags.bits, cache_ptr, dataset_ptr) };
                 Ok(RandomXVM {
                     vm,
@@ -355,7 +363,7 @@ impl RandomXVM {
         if self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
             //no way to check if this fails, c code does not return anything
             unsafe {
-                randomx_vm_set_dataset(self.vm, dataset.dataset);
+                randomx_vm_set_dataset(self.vm, dataset.inner.dataset_ptr);
             }
             Ok(())
         } else {
