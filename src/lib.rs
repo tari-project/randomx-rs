@@ -296,7 +296,6 @@ impl RandomXVM {
         cache: Option<&RandomXCache>,
         dataset: Option<&RandomXDataset>,
     ) -> Result<RandomXVM, RandomXError> {
-        let test: *mut randomx_vm;
         let mut is_full_mem = false;
         let flag_full_mem = RandomXFlag::FLAG_FULL_MEM;
 
@@ -317,29 +316,14 @@ impl RandomXVM {
             ));
         }
 
-        match cache {
-            Some(stash) => match dataset {
-                Some(data) => unsafe {
-                    test = randomx_create_vm(flags.bits, stash.cache, data.dataset)
-                },
-                None => unsafe {
-                    test = randomx_create_vm(flags.bits, stash.cache, ptr::null_mut())
-                },
-            },
-            None => match dataset {
-                Some(data) => unsafe {
-                    test = randomx_create_vm(flags.bits, ptr::null_mut(), data.dataset)
-                },
-                None => test = ptr::null_mut(),
-            },
+        if cache.is_some() || dataset.is_some() {
+            let cache = cache.map(|stash| stash.cache).unwrap_or_else(ptr::null_mut);
+            let dataset = dataset.map(|data| data.dataset).unwrap_or_else(ptr::null_mut);
+            let vm = unsafe { randomx_create_vm(flags.bits, cache, dataset) };
+            Ok(RandomXVM { vm, flags })
+        } else {
+            Err(RandomXError::CreationError("Failed to allocate VM".to_string()))
         }
-
-        if test.is_null() {
-            return Err(RandomXError::CreationError("Failed to allocate VM".to_string()));
-        }
-
-        let result = RandomXVM { vm: test, flags };
-        Ok(result)
     }
 
     /// Re-initializes the `VM` with a new cache that was initialised without
