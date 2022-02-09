@@ -180,7 +180,7 @@ impl Drop for RandomXDatasetInner {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Dataset structure
 pub struct RandomXDataset {
     inner: Arc<RandomXDatasetInner>,
@@ -279,6 +279,7 @@ pub struct RandomXVM {
     flags: RandomXFlag,
     vm: *mut randomx_vm,
     linked_cache: Option<RandomXCache>,
+    linked_dataset: Option<RandomXDataset>,
 }
 
 impl Drop for RandomXVM {
@@ -335,6 +336,7 @@ impl RandomXVM {
                     vm,
                     flags,
                     linked_cache: cache.cloned(),
+                    linked_dataset: dataset.cloned(),
                 })
             }
         }
@@ -359,12 +361,13 @@ impl RandomXVM {
 
     /// Re-initializes the `VM` with a new dataset that was initialised with
     /// RandomXFlag::FLAG_FULL_MEM.
-    pub fn reinit_dataset(&self, dataset: &RandomXDataset) -> Result<(), RandomXError> {
+    pub fn reinit_dataset(&mut self, dataset: &RandomXDataset) -> Result<(), RandomXError> {
         if self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
             //no way to check if this fails, c code does not return anything
             unsafe {
                 randomx_vm_set_dataset(self.vm, dataset.inner.dataset_ptr);
             }
+            self.linked_dataset = Some(dataset.clone());
             Ok(())
         } else {
             Err(RandomXError::FlagConfigError(
@@ -560,7 +563,7 @@ mod tests {
 
         let cache3 = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset3 = RandomXDataset::new(flags, &cache3, 0).unwrap();
-        let vm3 = RandomXVM::new(flags2, None, Some(&dataset3)).unwrap();
+        let mut vm3 = RandomXVM::new(flags2, None, Some(&dataset3)).unwrap();
         let hash4 = vm3.calculate_hash(input.as_bytes()).expect("no data");
         assert_ne!(hash3, vec);
         let reinit_dataset = vm3.reinit_dataset(&dataset3);
