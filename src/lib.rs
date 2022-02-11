@@ -172,6 +172,8 @@ pub struct RandomXDatasetInner {
     dataset_ptr: *mut randomx_dataset,
     dataset_start: c_ulong,
     dataset_count: c_ulong,
+    #[allow(dead_code)]
+    cache: RandomXCache,
 }
 
 impl Drop for RandomXDatasetInner {
@@ -216,6 +218,7 @@ impl RandomXDataset {
                 dataset_ptr: test,
                 dataset_start: start,
                 dataset_count: count,
+                cache: cache.clone(),
             };
             let result = RandomXDataset {
                 inner: Arc::new(inner),
