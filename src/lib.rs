@@ -313,8 +313,8 @@ impl RandomXVM {
     /// `dataset` is a dataset object, optional if FLAG_FULL_MEM is not set.
     pub fn new(
         flags: RandomXFlag,
-        cache: Option<&RandomXCache>,
-        dataset: Option<&RandomXDataset>,
+        cache: Option<RandomXCache>,
+        dataset: Option<RandomXDataset>,
     ) -> Result<RandomXVM, RandomXError> {
         let is_full_mem = flags.contains(RandomXFlag::FLAG_FULL_MEM);
         match (cache, dataset) {
@@ -329,17 +329,19 @@ impl RandomXVM {
             )),
             (cache, dataset) => {
                 let cache_ptr = cache
+                    .as_ref()
                     .map(|stash| stash.inner.cache_ptr)
                     .unwrap_or_else(ptr::null_mut);
                 let dataset_ptr = dataset
+                    .as_ref()
                     .map(|data| data.inner.dataset_ptr)
                     .unwrap_or_else(ptr::null_mut);
                 let vm = unsafe { randomx_create_vm(flags.bits, cache_ptr, dataset_ptr) };
                 Ok(RandomXVM {
                     vm,
                     flags,
-                    linked_cache: cache.cloned(),
-                    linked_dataset: dataset.cloned(),
+                    linked_cache: cache,
+                    linked_dataset: dataset,
                 })
             }
         }
@@ -347,13 +349,13 @@ impl RandomXVM {
 
     /// Re-initializes the `VM` with a new cache that was initialised without
     /// RandomXFlag::FLAG_FULL_MEM.
-    pub fn reinit_cache(&mut self, cache: &RandomXCache) -> Result<(), RandomXError> {
+    pub fn reinit_cache(&mut self, cache: RandomXCache) -> Result<(), RandomXError> {
         if !self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
             //no way to check if this fails, c code does not return anything
             unsafe {
                 randomx_vm_set_cache(self.vm, cache.inner.cache_ptr);
             }
-            self.linked_cache = Some(cache.clone());
+            self.linked_cache = Some(cache);
             Ok(())
         } else {
             Err(RandomXError::FlagConfigError(
@@ -364,13 +366,13 @@ impl RandomXVM {
 
     /// Re-initializes the `VM` with a new dataset that was initialised with
     /// RandomXFlag::FLAG_FULL_MEM.
-    pub fn reinit_dataset(&mut self, dataset: &RandomXDataset) -> Result<(), RandomXError> {
+    pub fn reinit_dataset(&mut self, dataset: RandomXDataset) -> Result<(), RandomXError> {
         if self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
             //no way to check if this fails, c code does not return anything
             unsafe {
                 randomx_vm_set_dataset(self.vm, dataset.inner.dataset_ptr);
             }
-            self.linked_dataset = Some(dataset.clone());
+            self.linked_dataset = Some(dataset);
             Ok(())
         } else {
             Err(RandomXError::FlagConfigError(
@@ -508,13 +510,13 @@ mod tests {
         let flags = RandomXFlag::default();
         let key = "Key";
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
-        let mut vm = RandomXVM::new(flags, Some(&cache), None);
+        let mut vm = RandomXVM::new(flags, Some(cache.clone()), None);
         if let Err(i) = vm {
             panic!("Failed to allocate vm, {}", i);
         }
         drop(vm);
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
-        vm = RandomXVM::new(flags, Some(&cache), Some(&dataset));
+        vm = RandomXVM::new(flags, Some(cache.clone()), Some(dataset.clone()));
         if let Err(i) = vm {
             panic!("Failed to allocate vm, {}", i);
         }
@@ -546,27 +548,27 @@ mod tests {
         let key = "Key";
         let input = "Input";
         let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
-        let mut vm1 = RandomXVM::new(flags, Some(&cache1), None).unwrap();
+        let mut vm1 = RandomXVM::new(flags, Some(cache1.clone()), None).unwrap();
         let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
         let vec = vec![0u8; hash1.len() as usize];
         assert_ne!(hash1, vec);
-        let reinit_cache = vm1.reinit_cache(&cache1);
+        let reinit_cache = vm1.reinit_cache(cache1.clone());
         assert_eq!(reinit_cache.is_ok(), true);
         let hash2 = vm1.calculate_hash(input.as_bytes()).expect("no data");
         assert_ne!(hash2, vec);
         assert_eq!(hash1, hash2);
 
         let cache2 = RandomXCache::new(flags, key.as_bytes()).unwrap();
-        let vm2 = RandomXVM::new(flags, Some(&cache2), None).unwrap();
+        let vm2 = RandomXVM::new(flags, Some(cache2.clone()), None).unwrap();
         let hash3 = vm2.calculate_hash(input.as_bytes()).expect("no data");
         assert_eq!(hash2, hash3);
 
         let cache3 = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset3 = RandomXDataset::new(flags, cache3.clone(), 0).unwrap();
-        let mut vm3 = RandomXVM::new(flags2, None, Some(&dataset3)).unwrap();
+        let mut vm3 = RandomXVM::new(flags2, None, Some(dataset3.clone())).unwrap();
         let hash4 = vm3.calculate_hash(input.as_bytes()).expect("no data");
         assert_ne!(hash3, vec);
-        let reinit_dataset = vm3.reinit_dataset(&dataset3);
+        let reinit_dataset = vm3.reinit_dataset(dataset3.clone());
         assert_eq!(reinit_dataset.is_ok(), true);
         let hash5 = vm3.calculate_hash(input.as_bytes()).expect("no data");
         assert_ne!(hash4, vec);
@@ -574,7 +576,7 @@ mod tests {
 
         let cache4 = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset4 = RandomXDataset::new(flags, cache4.clone(), 0).unwrap();
-        let vm4 = RandomXVM::new(flags2, Some(&cache4), Some(&dataset4)).unwrap();
+        let vm4 = RandomXVM::new(flags2, Some(cache4.clone()), Some(dataset4.clone())).unwrap();
         let hash6 = vm3.calculate_hash(input.as_bytes()).expect("no data");
         assert_eq!(hash5, hash6);
 
@@ -598,7 +600,7 @@ mod tests {
         inputs.push("Input 2".as_bytes());
         inputs.push("Inputs 3".as_bytes());
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
-        let vm = RandomXVM::new(flags, Some(&cache), None).unwrap();
+        let vm = RandomXVM::new(flags, Some(cache.clone()), None).unwrap();
         let hashes = vm.calculate_hash_set(inputs.as_slice()).expect("no data");
         assert_eq!(inputs.len(), hashes.len());
         let mut prev_hash = Vec::new();
@@ -623,7 +625,7 @@ mod tests {
         let input = "Input";
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
-        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset)).unwrap();
+        let vm = RandomXVM::new(flags, Some(cache.clone()), Some(dataset.clone())).unwrap();
         let hash = vm.calculate_hash(input.as_bytes()).expect("no data");
         assert_eq!(
             hash,
@@ -638,7 +640,7 @@ mod tests {
 
         let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset1 = RandomXDataset::new(flags, cache1.clone(), 0).unwrap();
-        let vm1 = RandomXVM::new(flags, Some(&cache1), Some(&dataset1)).unwrap();
+        let vm1 = RandomXVM::new(flags, Some(cache1.clone()), Some(dataset1.clone())).unwrap();
         let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
         assert_eq!(
             hash1,
@@ -659,7 +661,7 @@ mod tests {
         let input = "Input";
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
-        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset)).unwrap();
+        let vm = RandomXVM::new(flags, Some(cache.clone()), Some(dataset.clone())).unwrap();
         drop(dataset);
         drop(cache);
         let hash = vm.calculate_hash(input.as_bytes()).expect("no data");
@@ -674,7 +676,7 @@ mod tests {
 
         let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset1 = RandomXDataset::new(flags, cache1.clone(), 0).unwrap();
-        let vm1 = RandomXVM::new(flags, Some(&cache1), Some(&dataset1)).unwrap();
+        let vm1 = RandomXVM::new(flags, Some(cache1.clone()), Some(dataset1.clone())).unwrap();
         drop(dataset1);
         drop(cache1);
         let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
