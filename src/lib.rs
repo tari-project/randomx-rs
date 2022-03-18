@@ -19,6 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
+
 //! # randomx-rs
 //!
 //! The `randomx-rs` crate provides bindings to the `RandomX` proof-of-work (PoW) system as well
@@ -157,11 +165,11 @@ impl RandomXCache {
     }
 }
 
-#[derive(Debug)]
 /// Dataset structure
+#[derive(Debug)]
 pub struct RandomXDataset {
     dataset: *mut randomx_dataset,
-    dataset_start: c_ulong,
+    _dataset_start: c_ulong,
     dataset_count: c_ulong,
 }
 
@@ -199,7 +207,7 @@ impl RandomXDataset {
         } else {
             let result = RandomXDataset {
                 dataset: test,
-                dataset_start: start,
+                _dataset_start: start,
                 dataset_count: count,
             };
             let item_count = match result.count() {
@@ -335,7 +343,9 @@ impl RandomXVM {
         }
 
         if test.is_null() {
-            return Err(RandomXError::CreationError("Failed to allocate VM".to_string()));
+            return Err(RandomXError::CreationError(
+                "Failed to allocate VM".to_string(),
+            ));
         }
 
         let result = RandomXVM { vm: test, flags };
