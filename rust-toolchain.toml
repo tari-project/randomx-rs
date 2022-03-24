@@ -1,0 +1,4 @@
+# this should match the nightly version in tari-project/tari
+# only used for cargo fmt settings, repo should always compile on stable too
+[toolchain]
+channel = "nightly-2021-11-20"

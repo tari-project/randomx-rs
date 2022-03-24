@@ -1,0 +1,81 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: randomx git submodule
+        run: |
+          git submodule init
+          git submodule update
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-11-20
+          profile: minimal
+          components: rustfmt, clippy
+          override: true
+      - uses: Swatinem/rust-cache@v1
+      - name: cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - name: install cargo lints
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: cargo-lints
+      - name: cargo lints clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: lints
+          args: clippy
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: randomx git submodule
+        run: |
+          git submodule init
+          git submodule update
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - uses: Swatinem/rust-cache@v1
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: randomx git submodule
+        run: |
+          git submodule init
+          git submodule update
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - uses: Swatinem/rust-cache@v1
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
