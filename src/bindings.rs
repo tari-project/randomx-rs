@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-extern crate libc;
 
 use libc::{c_uint, c_ulong, c_void};
 pub const RANDOMX_HASH_SIZE: u32 = 32;
@@ -71,11 +70,7 @@ extern "C" {
         input_size: usize,
         output: *mut c_void,
     );
-    pub fn randomx_calculate_hash_first(
-        machine: *mut randomx_vm,
-        input: *const c_void,
-        input_size: usize,
-    );
+    pub fn randomx_calculate_hash_first(machine: *mut randomx_vm, input: *const c_void, input_size: usize);
     pub fn randomx_calculate_hash_next(
         machine: *mut randomx_vm,
         input_next: *const c_void,
@@ -88,11 +83,11 @@ extern "C" {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::{ffi::CString, mem, ptr};
+
     use libc::{c_char, c_uint, c_void};
-    use std::ffi::CString;
-    use std::mem;
-    use std::ptr;
+
+    use super::*;
 
     type ArrType = [c_char; RANDOMX_HASH_SIZE as usize]; // arr_type is the type in C
 
@@ -131,14 +126,7 @@ mod tests {
 
         let dataset = unsafe { randomx_alloc_dataset(flag) };
 
-        unsafe {
-            randomx_init_dataset(
-                dataset,
-                cache,
-                0,
-                (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong,
-            )
-        }
+        unsafe { randomx_init_dataset(dataset, cache, 0, u64::from(RANDOMX_DATASET_ITEM_SIZE - 1)) }
 
         assert_ne!(unsafe { randomx_dataset_item_count() }, 0);
 
@@ -173,14 +161,7 @@ mod tests {
             panic!("Failed to re-init vm with new cache");
         }
         let dataset = unsafe { randomx_alloc_dataset(flag) };
-        unsafe {
-            randomx_init_dataset(
-                dataset,
-                cache,
-                0,
-                (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong,
-            )
-        }
+        unsafe { randomx_init_dataset(dataset, cache, 0, u64::from(RANDOMX_DATASET_ITEM_SIZE - 1)) }
         vm = unsafe { randomx_create_vm(flag, cache, dataset) };
         if vm.is_null() {
             panic!("Failed to init vm with dataset");
@@ -238,7 +219,7 @@ mod tests {
             vec.push(arr[i as usize] as u8);
             vec2.push(0u8);
         }
-        assert_ne!(vec, vec2); //vec2 is filled with 0
+        assert_ne!(vec, vec2); // vec2 is filled with 0
         unsafe {
             randomx_destroy_vm(vm);
             randomx_release_cache(cache);
@@ -299,7 +280,7 @@ mod tests {
             vec2.push(0u8);
             vec3.push(arr[i as usize] as u8);
         }
-        assert_ne!(vec, vec2); //vec2 is filled with 0
+        assert_ne!(vec, vec2); // vec2 is filled with 0
 
         unsafe {
             randomx_calculate_hash_next(vm, c_input_ptr3, size_input3, output_ptr);
@@ -309,8 +290,8 @@ mod tests {
             vec.push(arr[i as usize] as u8);
             vec2.push(0u8);
         }
-        assert_ne!(vec, vec2); //vec2 is filled with 0
-        assert_ne!(vec, vec3); //vec3 is previous hash
+        assert_ne!(vec, vec2); // vec2 is filled with 0
+        assert_ne!(vec, vec3); // vec3 is previous hash
 
         for i in 0..RANDOMX_HASH_SIZE {
             vec3.push(arr[i as usize] as u8);
@@ -324,8 +305,8 @@ mod tests {
             vec.push(arr[i as usize] as u8);
             vec2.push(0u8);
         }
-        assert_ne!(vec, vec2); //vec2 is filled with 0
-        assert_ne!(vec, vec3); //vec3 is previous hash
+        assert_ne!(vec, vec2); // vec2 is filled with 0
+        assert_ne!(vec, vec3); // vec3 is previous hash
 
         unsafe {
             randomx_destroy_vm(vm);
