@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 //! # randomx-rs
 //!
 //! The `randomx-rs` crate provides bindings to the `RandomX` proof-of-work (PoW) system as well
@@ -58,27 +59,27 @@ use crate::bindings::{
 };
 
 bitflags! {
-/// Indicates to the RandomX library which configuration options to use.
+    /// Indicates to the RandomX library which configuration options to use.
     pub struct RandomXFlag: u32 {
-    /// All flags not set, works on all platforms, however is the slowest
-        const FLAG_DEFAULT      =0b0000_0000;
-    /// Allocate memory in large pages
-        const FLAG_LARGE_PAGES  =0b0000_0001;
-    /// Use hardware accelerated AES
-        const FLAG_HARD_AES     =0b0000_0010;
-    /// Use the full dataset
-        const FLAG_FULL_MEM     =0b0000_0100;
-    /// Use JIT compilation support
-        const FLAG_JIT          =0b0000_1000;
-    /// When combined with FLAG_JIT, the JIT pages are never writable and executable at the
-    /// same time
-        const FLAG_SECURE       =0b0001_0000;
-    /// Optimize Argon2 for CPUs with the SSSE3 instruction set
-        const FLAG_ARGON2_SSSE3 =0b0010_0000;
-    /// Optimize Argon2 for CPUs with the AVX2 instruction set
-        const FLAG_ARGON2_AVX2  =0b0100_0000;
-    /// Optimize Argon2 for CPUs without the AVX2 or SSSE3 instruction sets
-        const FLAG_ARGON2       =0b0110_0000;
+        /// No flags set. Works on all platforms, but is the slowest.
+        const FLAG_DEFAULT      = 0b0000_0000;
+        /// Allocate memory in large pages.
+        const FLAG_LARGE_PAGES  = 0b0000_0001;
+        /// Use hardware accelerated AES.
+        const FLAG_HARD_AES     = 0b0000_0010;
+        /// Use the full dataset.
+        const FLAG_FULL_MEM     = 0b0000_0100;
+        /// Use JIT compilation support.
+        const FLAG_JIT          = 0b0000_1000;
+        /// When combined with FLAG_JIT, the JIT pages are never writable and executable at the
+        /// same time.
+        const FLAG_SECURE       = 0b0001_0000;
+        /// Optimize Argon2 for CPUs with the SSSE3 instruction set.
+        const FLAG_ARGON2_SSSE3 = 0b0010_0000;
+        /// Optimize Argon2 for CPUs with the AVX2 instruction set.
+        const FLAG_ARGON2_AVX2  = 0b0100_0000;
+        /// Optimize Argon2 for CPUs without the AVX2 or SSSE3 instruction sets.
+        const FLAG_ARGON2       = 0b0110_0000;
     }
 }
 
@@ -473,10 +474,7 @@ mod tests {
     fn lib_alloc_cache() {
         let flags = RandomXFlag::default();
         let key = "Key";
-        let cache = RandomXCache::new(flags, key.as_bytes());
-        if let Err(i) = cache {
-            panic!("Failed to allocate cache, {}", i);
-        }
+        let cache = RandomXCache::new(flags, key.as_bytes()).expect("Failed to allocate cache");
         drop(cache);
     }
 
@@ -485,10 +483,7 @@ mod tests {
         let flags = RandomXFlag::default();
         let key = "Key";
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
-        let dataset = RandomXDataset::new(flags, cache.clone(), 0);
-        if let Err(i) = dataset {
-            panic!("Failed to allocate dataset, {}", i);
-        }
+        let dataset = RandomXDataset::new(flags, cache.clone(), 0).expect("Failed to allocate dataset");
         drop(dataset);
         drop(cache);
     }
@@ -498,16 +493,10 @@ mod tests {
         let flags = RandomXFlag::default();
         let key = "Key";
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
-        let mut vm = RandomXVM::new(flags, Some(cache.clone()), None);
-        if let Err(i) = vm {
-            panic!("Failed to allocate vm, {}", i);
-        }
+        let mut vm = RandomXVM::new(flags, Some(cache.clone()), None).expect("Failed to allocate VM");
         drop(vm);
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
-        vm = RandomXVM::new(flags, Some(cache.clone()), Some(dataset.clone()));
-        if let Err(i) = vm {
-            panic!("Failed to allocate vm, {}", i);
-        }
+        vm = RandomXVM::new(flags, Some(cache.clone()), Some(dataset.clone())).expect("Failed to allocate VM");
         drop(dataset);
         drop(cache);
         drop(vm);
@@ -520,9 +509,7 @@ mod tests {
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
         let memory = dataset.get_data().unwrap_or(std::vec::Vec::new());
-        if memory.len() == 0 {
-            panic!("Failed to get dataset memory");
-        }
+        assert!(memory.len() > 0, "Failed to get dataset memory");
         let vec = vec![0u8; memory.len() as usize];
         assert_ne!(memory, vec);
         drop(dataset);
