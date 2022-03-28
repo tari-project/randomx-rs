@@ -123,7 +123,7 @@ pub enum RandomXError {
 }
 
 #[derive(Debug)]
-pub struct RandomXCacheInner {
+struct RandomXCacheInner {
     cache_ptr: *mut randomx_cache,
 }
 
@@ -177,7 +177,7 @@ impl RandomXCache {
 }
 
 #[derive(Debug)]
-pub struct RandomXDatasetInner {
+struct RandomXDatasetInner {
     dataset_ptr: *mut randomx_dataset,
     dataset_count: c_ulong,
     #[allow(dead_code)]
