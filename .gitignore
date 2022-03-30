@@ -11,3 +11,7 @@ Cargo.lock
 .DS_Store
 .idea
 *.iml
+
+cov_raw/
+*.profraw
+coverage_report/

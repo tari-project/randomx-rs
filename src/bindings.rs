@@ -25,19 +25,16 @@ pub const RANDOMX_HASH_SIZE: u32 = 32;
 pub const RANDOMX_DATASET_ITEM_SIZE: u32 = 64;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct randomx_dataset {
     _unused: [u8; 0],
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct randomx_cache {
     _unused: [u8; 0],
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct randomx_vm {
     _unused: [u8; 0],
 }
@@ -103,9 +100,7 @@ mod tests {
         unsafe {
             randomx_init_cache(cache, c_key_ptr, size_key);
         }
-        if cache.is_null() {
-            panic!("Failed to init cache");
-        }
+        assert!(!cache.is_null(), "Failed to init cache");
         unsafe {
             randomx_release_cache(cache);
         }

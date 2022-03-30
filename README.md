@@ -1,3 +1,6 @@
+![CI](https://github.com/tari-project/randomx-rs/actions/workflows/ci.yml/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/delta1/randomx-rs/badge.svg?branch=cov-temp)](https://coveralls.io/github/delta1/randomx-rs?branch=cov-temp)
+
 # RandomX-rs
 
 > Rust bindings to the RandomX proof-of-work (Pow) system
