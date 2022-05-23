@@ -20,10 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # randomx-rs
+//! # RandomX
 //!
-//! The `randomx-rs` crate provides bindings to the `RandomX` proof-of-work (PoW) system as well
-//! as the functionality to utilize these bindings.
+//! The `randomx-rs` crate provides bindings to the RandomX proof-of-work (PoW) system.
+//!
+//! From the [RandomX github repo]:
+//!
+//! "RandomX is a proof-of-work (PoW) algorithm that is optimized for general-purpose CPUs. RandomX uses random code
+//! execution together with several memory-hard techniques to minimize the efficiency advantage of specialized
+//! hardware."
+//!
+//! Read more about how RandomX works in the [design document].
+//!
+//! [RandomX github repo]: <https://github.com/tevador/RandomX>
+//! [design document]: <https://github.com/tevador/RandomX/blob/master/doc/design.md>
 mod bindings;
 use std::{convert::TryFrom, num::TryFromIntError, ptr, sync::Arc};
 
@@ -59,7 +69,7 @@ use crate::bindings::{
 };
 
 bitflags! {
-    /// Indicates to the RandomX library which configuration options to use.
+    /// RandomX Flags are used to configure the library.
     pub struct RandomXFlag: u32 {
         /// No flags set. Works on all platforms, but is the slowest.
         const FLAG_DEFAULT      = 0b0000_0000;
@@ -93,7 +103,6 @@ impl RandomXFlag {
     ///
     /// The above flags need to be set manually, if required.
     pub fn get_recommended_flags() -> RandomXFlag {
-        // c code will always return a value
         RandomXFlag {
             bits: unsafe { randomx_get_flags() },
         }
@@ -108,7 +117,7 @@ impl Default for RandomXFlag {
 }
 
 #[derive(Debug, Clone, Error)]
-/// Custom error enum
+/// This enum specifies the possible errors that may occur.
 pub enum RandomXError {
     #[error("Problem creating the RandomX object: {0}")]
     CreationError(String),
@@ -137,14 +146,14 @@ impl Drop for RandomXCacheInner {
 }
 
 #[derive(Debug, Clone)]
-/// Cache structure
+/// The Cache is used for light verification and Dataset construction.
 pub struct RandomXCache {
     inner: Arc<RandomXCacheInner>,
 }
 
 impl RandomXCache {
-    /// Creates a new cache object, allocates memory to the `cache` object and initializes it with
-    /// he key value, error on failure.
+    /// Creates and alllcates memory for a new cache object, and initializes it with
+    /// the key value.
     ///
     /// `flags` is any combination of the following two flags:
     /// * FLAG_LARGE_PAGES
@@ -194,14 +203,13 @@ impl Drop for RandomXDatasetInner {
 }
 
 #[derive(Debug, Clone)]
-/// Dataset structure
+/// The Dataset is a read-only memory structure that is used during VM program execution.
 pub struct RandomXDataset {
     inner: Arc<RandomXDatasetInner>,
 }
 
 impl RandomXDataset {
-    /// Creates a new dataset object, allocates memory to the `dataset` object and initializes it,
-    /// error on failure.
+    /// Creates a new dataset object, allocates memory to the `dataset` object and initializes it.
     ///
     /// `flags` is one of the following:
     /// * FLAG_DEFAULT
@@ -272,7 +280,7 @@ impl RandomXDataset {
 }
 
 #[derive(Debug)]
-/// VM structure
+/// The RandomX Virtual Machine (VM) is a complex instruction set computer that executes generated programs.
 pub struct RandomXVM {
     flags: RandomXFlag,
     vm: *mut randomx_vm,
