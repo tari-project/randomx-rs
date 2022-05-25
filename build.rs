@@ -27,6 +27,7 @@ use std::{
     process::Command,
 };
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let project_dir = Path::new(&out_dir);
