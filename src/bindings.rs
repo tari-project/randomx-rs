@@ -121,7 +121,7 @@ mod tests {
 
         let dataset = unsafe { randomx_alloc_dataset(flag) };
 
-        unsafe { randomx_init_dataset(dataset, cache, 0, u64::from(RANDOMX_DATASET_ITEM_SIZE - 1)) }
+        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
 
         assert_ne!(unsafe { randomx_dataset_item_count() }, 0);
 
@@ -156,7 +156,7 @@ mod tests {
             panic!("Failed to re-init vm with new cache");
         }
         let dataset = unsafe { randomx_alloc_dataset(flag) };
-        unsafe { randomx_init_dataset(dataset, cache, 0, u64::from(RANDOMX_DATASET_ITEM_SIZE - 1)) }
+        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
         vm = unsafe { randomx_create_vm(flag, cache, dataset) };
         if vm.is_null() {
             panic!("Failed to init vm with dataset");
@@ -199,7 +199,7 @@ mod tests {
 
         let dataset = unsafe { randomx_alloc_dataset(flag) };
 
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1).into()) }
+        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
 
         let vm = unsafe { randomx_create_vm(flag, cache, ptr::null_mut()) };
 
@@ -211,6 +211,7 @@ mod tests {
         let mut vec2 = Vec::new();
 
         for i in 0..RANDOMX_HASH_SIZE {
+            #[allow(clippy::cast_sign_loss)]
             vec.push(arr[i as usize] as u8);
             vec2.push(0u8);
         }
@@ -221,6 +222,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::cast_sign_loss)]
     #[test]
     fn calculate_hash_set() {
         let key = "Key";
@@ -254,7 +256,7 @@ mod tests {
 
         let dataset = unsafe { randomx_alloc_dataset(flag) };
 
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1).into()) }
+        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
 
         let vm = unsafe { randomx_create_vm(flag, cache, ptr::null_mut()) };
 
