@@ -72,7 +72,7 @@ fn main() {
     } else if target.contains("aarch64-unknown-linux-gnu") {
         let c = Command::new("cmake")
             .arg("-D")
-            .arg("ARCH=default")
+            .arg("ARCH=arm64")
             .arg("-D")
             .arg("ARCH_ID=aarch64")
             .arg("-D")
@@ -83,6 +83,39 @@ fn main() {
             .arg("CMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc")
             .arg("-D")
             .arg("CMAKE_CXX_COMPILER=/usr/bin/aarch64-linux-gnu-g++")
+            .arg(repo_dir.to_str().unwrap())
+            .output()
+            .expect("failed to execute CMake");
+        println!("status: {}", c.status);
+        std::io::stdout().write_all(&c.stdout).unwrap();
+        std::io::stderr().write_all(&c.stderr).unwrap();
+        assert!(c.status.success());
+
+        let m = Command::new("cmake")
+            .arg("--build")
+            .arg(".")
+            .arg("--config")
+            .arg("Release")
+            .output()
+            .expect("failed to execute Make");
+        println!("status: {}", m.status);
+        std::io::stdout().write_all(&m.stdout).unwrap();
+        std::io::stderr().write_all(&m.stderr).unwrap();
+        assert!(m.status.success());
+    } else if target.contains("aarch64-apple-darwin") {
+        let c = Command::new("cmake")
+            .arg("-D")
+            .arg("ARCH=arm64")
+            .arg("-D")
+            .arg("ARCH_ID=aarch64")
+            .arg("-D")
+            .arg("CMAKE_CROSSCOMPILING=true")
+            .arg("-D")
+            .arg("CMAKE_SYSTEM_PROCESSOR=aarch64")
+            .arg("-D")
+            .arg("CMAKE_C_FLAGS='-arch arm64'")
+            .arg("-D")
+            .arg("CMAKE_CXX_FLAGS='-arch arm64'")
             .arg(repo_dir.to_str().unwrap())
             .output()
             .expect("failed to execute CMake");
