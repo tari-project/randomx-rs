@@ -102,6 +102,50 @@ fn main() {
         std::io::stdout().write_all(&m.stdout).unwrap();
         std::io::stderr().write_all(&m.stderr).unwrap();
         assert!(m.status.success());
+    } else if target.contains("linux-android") {
+        let android_abi = {
+            if target.contains("aarch64") {
+                "arm64-v8a"
+            } else if target.contains("x86_64") {
+                "x86_64"
+            } else if target.contains("armv7") {
+                "armeabi-v7a"
+            } else if target.contains("i686") {
+                "x86"
+            } else {
+                panic!("unknown Android ABI")
+            }
+        };
+
+        let android_sdk = env::var("ANDROID_SDK_ROOT").expect("ANDROID_SDK_ROOT variable not set");
+
+        let android_platform = env::var("ANDROID_PLATFORM").unwrap_or("android-26".to_owned());
+        let android_cmake =
+            env::var("ANDROID_CMAKE").unwrap_or(android_sdk.clone() + &"/cmake/3.22.1/bin/cmake".to_owned());
+        let android_toolchain = env::var("ANDROID_CMAKE_TOOLCHAIN")
+            .unwrap_or(android_sdk.clone() + &"/ndk/22.1.7171670/build/cmake/android.toolchain.cmake".to_owned());
+
+        let c = Command::new(android_cmake)
+            .arg("-D")
+            .arg("CMAKE_TOOLCHAIN_FILE=".to_owned() + &android_toolchain)
+            .arg("-D")
+            .arg("ANDROID_ABI=".to_owned() + &android_abi)
+            .arg("-D")
+            .arg("ANDROID_PLATFORM=".to_owned() + &android_platform)
+            .arg(repo_dir.to_str().unwrap())
+            .output()
+            .expect("failed to execute CMake");
+
+        println!("status: {}", c.status);
+        std::io::stdout().write_all(&c.stdout).unwrap();
+        std::io::stderr().write_all(&c.stderr).unwrap();
+        assert!(c.status.success());
+
+        let m = Command::new("make").output().expect("failed to execute Make");
+        println!("status: {}", m.status);
+        std::io::stdout().write_all(&m.stdout).unwrap();
+        std::io::stderr().write_all(&m.stderr).unwrap();
+        assert!(m.status.success());
     } else if target.contains("aarch64-apple-darwin") {
         let c = Command::new("cmake")
             .arg("-D")
@@ -163,6 +207,8 @@ fn main() {
     } // link to RandomX
 
     if target.contains("apple") {
+        println!("cargo:rustc-link-lib=dylib=c++");
+    } else if target.contains("android") {
         println!("cargo:rustc-link-lib=dylib=c++");
     } else if target.contains("linux") {
         println!("cargo:rustc-link-lib=dylib=stdc++");
