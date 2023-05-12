@@ -47,9 +47,9 @@ fn main() {
     env::set_current_dir(build_dir).unwrap();
 
     let host = env::var("HOST").unwrap();
-    //println!("host: {}", host);
+    // println!("host: {}", host);
     let target = env::var("TARGET").unwrap();
-    //println!("target: {}", target);
+    // println!("target: {}", target);
     if host.contains("windows") && target.contains("windows-msvc") {
         let c = Command::new("cmake")
             .arg("-G")
@@ -174,9 +174,7 @@ fn main() {
         std::io::stderr().write_all(&c.stderr).unwrap();
         assert!(c.status.success());
 
-        let m = Command::new("make")
-            .output()
-            .expect("failed to execute Make");
+        let m = Command::new("make").output().expect("failed to execute Make");
         println!("status: {}", m.status);
         std::io::stdout().write_all(&m.stdout).unwrap();
         std::io::stderr().write_all(&m.stderr).unwrap();
