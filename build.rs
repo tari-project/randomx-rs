@@ -45,8 +45,12 @@ fn main() {
         },
     }
     env::set_current_dir(build_dir).unwrap();
+
+    let host = env::var("HOST").unwrap();
+    //println!("host: {}", host);
     let target = env::var("TARGET").unwrap();
-    if target.contains("windows") {
+    //println!("target: {}", target);
+    if host.contains("windows") && target.contains("windows-msvc") {
         let c = Command::new("cmake")
             .arg("-G")
             .arg("Visual Studio 16 2019")
@@ -103,26 +107,51 @@ fn main() {
         std::io::stderr().write_all(&m.stderr).unwrap();
         assert!(m.status.success());
     } else if target.contains("aarch64-apple-darwin") {
-        let c = Command::new("cmake")
-            .arg("-D")
-            .arg("ARCH=arm64")
-            .arg("-D")
-            .arg("ARCH_ID=aarch64")
-            .arg("-D")
-            .arg("CMAKE_CROSSCOMPILING=true")
-            .arg("-D")
-            .arg("CMAKE_SYSTEM_PROCESSOR=aarch64")
-            .arg("-D")
-            .arg("CMAKE_C_FLAGS='-arch arm64'")
-            .arg("-D")
-            .arg("CMAKE_CXX_FLAGS='-arch arm64'")
-            .arg(repo_dir.to_str().unwrap())
-            .output()
-            .expect("failed to execute CMake");
-        println!("status: {}", c.status);
-        std::io::stdout().write_all(&c.stdout).unwrap();
-        std::io::stderr().write_all(&c.stderr).unwrap();
-        assert!(c.status.success());
+        if let Ok(env) = env::var("RANDOMX_RS_CMAKE_OSX_SYSROOT") {
+            let c = Command::new("cmake")
+                .arg("-D")
+                .arg("ARCH=arm64")
+                .arg("-D")
+                .arg("ARCH_ID=aarch64")
+                .arg("-D")
+                .arg("CMAKE_CROSSCOMPILING=true")
+                .arg("-D")
+                .arg("CMAKE_SYSTEM_PROCESSOR=aarch64")
+                .arg("-D")
+                .arg("CMAKE_C_FLAGS='-arch arm64'")
+                .arg("-D")
+                .arg("CMAKE_CXX_FLAGS='-arch arm64'")
+                .arg("-D")
+                .arg("CMAKE_OSX_SYSROOT=".to_owned() + env.as_str())
+                .arg(repo_dir.to_str().unwrap())
+                .output()
+                .expect("failed to execute CMake");
+            println!("status: {}", c.status);
+            std::io::stdout().write_all(&c.stdout).unwrap();
+            std::io::stderr().write_all(&c.stderr).unwrap();
+            assert!(c.status.success());
+        } else {
+            let c = Command::new("cmake")
+                .arg("-D")
+                .arg("ARCH=arm64")
+                .arg("-D")
+                .arg("ARCH_ID=aarch64")
+                .arg("-D")
+                .arg("CMAKE_CROSSCOMPILING=true")
+                .arg("-D")
+                .arg("CMAKE_SYSTEM_PROCESSOR=aarch64")
+                .arg("-D")
+                .arg("CMAKE_C_FLAGS='-arch arm64'")
+                .arg("-D")
+                .arg("CMAKE_CXX_FLAGS='-arch arm64'")
+                .arg(repo_dir.to_str().unwrap())
+                .output()
+                .expect("failed to execute CMake");
+            println!("status: {}", c.status);
+            std::io::stdout().write_all(&c.stdout).unwrap();
+            std::io::stderr().write_all(&c.stderr).unwrap();
+            assert!(c.status.success());
+        }
 
         let m = Command::new("cmake")
             .arg("--build")
@@ -144,7 +173,10 @@ fn main() {
         std::io::stdout().write_all(&c.stdout).unwrap();
         std::io::stderr().write_all(&c.stderr).unwrap();
         assert!(c.status.success());
-        let m = Command::new("make").output().expect("failed to execute Make");
+
+        let m = Command::new("make")
+            .output()
+            .expect("failed to execute Make");
         println!("status: {}", m.status);
         std::io::stdout().write_all(&m.stdout).unwrap();
         std::io::stderr().write_all(&m.stderr).unwrap();
