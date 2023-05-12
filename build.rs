@@ -124,7 +124,7 @@ fn main() {
                 c = c.arg("-D")
                 .arg("CMAKE_OSX_SYSROOT=".to_owned() + env.as_str())
                 };
-                c.arg(repo_dir.to_str().unwrap())
+                c = c.arg(repo_dir.to_str().unwrap())
                 .output()
                 .expect("failed to execute CMake");
             println!("status: {}", c.status);
