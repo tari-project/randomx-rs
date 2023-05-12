@@ -108,30 +108,29 @@ fn main() {
         assert!(m.status.success());
     } else if target.contains("aarch64-apple-darwin") {
         let mut c = Command::new("cmake")
-                .arg("-D")
-                .arg("ARCH=arm64")
-                .arg("-D")
-                .arg("ARCH_ID=aarch64")
-                .arg("-D")
-                .arg("CMAKE_CROSSCOMPILING=true")
-                .arg("-D")
-                .arg("CMAKE_SYSTEM_PROCESSOR=aarch64")
-                .arg("-D")
-                .arg("CMAKE_C_FLAGS='-arch arm64'")
-                .arg("-D")
-                .arg("CMAKE_CXX_FLAGS='-arch arm64'");
-                if let Ok(env) = env::var("RANDOMX_RS_CMAKE_OSX_SYSROOT") {
-                c = c.arg("-D")
-                .arg("CMAKE_OSX_SYSROOT=".to_owned() + env.as_str())
-                };
-                c = c.arg(repo_dir.to_str().unwrap())
-                .output()
-                .expect("failed to execute CMake");
-            println!("status: {}", c.status);
-            std::io::stdout().write_all(&c.stdout).unwrap();
-            std::io::stderr().write_all(&c.stderr).unwrap();
-            assert!(c.status.success());
-    
+            .arg("-D")
+            .arg("ARCH=arm64")
+            .arg("-D")
+            .arg("ARCH_ID=aarch64")
+            .arg("-D")
+            .arg("CMAKE_CROSSCOMPILING=true")
+            .arg("-D")
+            .arg("CMAKE_SYSTEM_PROCESSOR=aarch64")
+            .arg("-D")
+            .arg("CMAKE_C_FLAGS='-arch arm64'")
+            .arg("-D")
+            .arg("CMAKE_CXX_FLAGS='-arch arm64'");
+        if let Ok(env) = env::var("RANDOMX_RS_CMAKE_OSX_SYSROOT") {
+            c = c.arg("-D").arg("CMAKE_OSX_SYSROOT=".to_owned() + env.as_str())
+        };
+        c = c
+            .arg(repo_dir.to_str().unwrap())
+            .output()
+            .expect("failed to execute CMake");
+        println!("status: {}", c.status);
+        std::io::stdout().write_all(&c.stdout).unwrap();
+        std::io::stderr().write_all(&c.stderr).unwrap();
+        assert!(c.status.success());
 
         let m = Command::new("cmake")
             .arg("--build")
