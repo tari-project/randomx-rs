@@ -73,7 +73,7 @@ Install [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/
 
 # Troubleshooting
 
-## MacOs
+## Mac/OSX
 
 If you're experiencing linker issues, or messages like
 
@@ -86,3 +86,27 @@ Try:
 - Does `which cc` report more than one binary? If so, uninstalling one of the clang compilers might help.
 - Upgrading cmake. `brew uninstall cmake && brew install cmake`
 - `cargo clean`
+
+On Apple ARM64 hardware and newer XCode releases, RandomX might fail the `randomx-tests`.
+```
+[83] Hash test 1e (interpreter)               ... PASSED
+[84] Hash test 2a (compiler)                  ... Assertion failed: (equalsHex(hash, "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f")), function operator(), file tests.cpp, line 966.
+zsh: abort      ./randomx-tests
+```
+or
+```
+[88] Hash test 2e (compiler)                  ... PASSED
+[89] Cache initialization: SSSE3              ... SKIPPED
+[90] Cache initialization: AVX2               ... SKIPPED
+[91] Hash batch test                          ... Assertion failed: (equalsHex(hash3, "c36d4ed4191e617309867ed66a443be4075014e2b061bcdaf9ce7b721d2b77a8")), function operator(), file tests.cpp, line 1074.
+zsh: abort      ./randomx-tests
+```
+ Building using an older SDK might help. Find location of current SDKs with `xcrun --show-sdk-path`, then for example:
+```bash
+export RANDOMX_RS_CMAKE_OSX_SYSROOT="/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk"
+cargo build
+```
+Quick test with built binaries
+```bash
+find target -name randomx-tests -exec {} \;
+```
