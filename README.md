@@ -71,6 +71,17 @@ Install [CMake](https://cmake.org/download/)
 
 Install [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
 
+### Android
+
+To build using the Android NDK the `ANDROID_SDK_ROOT` environment variable needs to be set. Other variables are optional as they have defaults. Example build command for ARM64:
+```
+ANDROID_SDK_ROOT=/home/user/Android/Sdk \
+ANDROID_PLATFORM=android-25 \
+ANDROID_CMAKE=/home/user/Android/Sdk/cmake/3.22.1/bin/cmake \
+ANDROID_CMAKE_TOOLCHAIN=/home/user/Android/Sdk/ndk/22.1.7171670/build/cmake/android.toolchain.cmake \
+cargo build --target=aarch64-linux-android
+```
+
 # Troubleshooting
 
 ## MacOs
