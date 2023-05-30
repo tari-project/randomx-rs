@@ -54,7 +54,6 @@ use bindings::{
     randomx_vm,
     randomx_vm_set_cache,
     randomx_vm_set_dataset,
-    RANDOMX_DATASET_ITEM_SIZE,
     RANDOMX_HASH_SIZE,
 };
 use bitflags::bitflags;
@@ -221,43 +220,40 @@ impl RandomXDataset {
     // Conversions may be lossy on Windows or Linux
     #[allow(clippy::useless_conversion)]
     pub fn new(flags: RandomXFlag, cache: RandomXCache, start: u32) -> Result<RandomXDataset, RandomXError> {
-        let count = RANDOMX_DATASET_ITEM_SIZE - 1 - start;
+        let item_count = RandomXDataset::count()
+            .map_err(|e| RandomXError::CreationError(format!("Could not get dataset count: {e:?}")))?;
+
         let test = unsafe { randomx_alloc_dataset(flags.bits) };
         if test.is_null() {
             Err(RandomXError::CreationError("Could not allocate dataset".to_string()))
         } else {
             let inner = RandomXDatasetInner {
                 dataset_ptr: test,
-                dataset_count: count,
+                dataset_count: item_count,
                 cache,
             };
             let result = RandomXDataset { inner: Arc::new(inner) };
-            let item_count = result
-                .count()
-                .map_err(|err| RandomXError::CreationError(format!("Could not get dataset count:{}", err)))?;
-            // Mirror the assert checks inside randomx_init_dataset call
-            if (start < item_count && count <= item_count) || (start + item_count <= count) {
+
+            if start < item_count {
                 unsafe {
                     randomx_init_dataset(
                         result.inner.dataset_ptr,
                         result.inner.cache.inner.cache_ptr,
                         c_ulong::from(start),
-                        c_ulong::from(count),
+                        c_ulong::from(item_count),
                     );
                 }
                 Ok(result)
             } else {
-                let reason = format!(
-                    "Dataset `start` or `count` was out of bounds: start: {}, count: {}, actual count: {}",
-                    start, count, item_count
-                );
-                Err(RandomXError::CreationError(reason))
+                Err(RandomXError::CreationError(format!(
+                    "start must be less than item_count: start: {start}, item_count: {item_count}",
+                )))
             }
         }
     }
 
     /// Returns the number of items in the `dataset` or an error on failure.
-    pub fn count(&self) -> Result<u32, RandomXError> {
+    pub fn count() -> Result<u32, RandomXError> {
         match unsafe { randomx_dataset_item_count() } {
             0 => Err(RandomXError::Other("Dataset item count was 0".to_string())),
             x => {
@@ -686,7 +682,7 @@ mod tests {
 
     #[test]
     fn test_vectors_fast_mode() {
-        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L994
+        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L979
         let key = b"test key 000";
         let vectors = [
             (
@@ -716,7 +712,7 @@ mod tests {
 
     #[test]
     fn test_vectors_light_mode() {
-        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L994
+        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L985
         let vectors = [
             (
                 b"test key 000",
@@ -747,6 +743,5 @@ mod tests {
             let hash = vm.calculate_hash(input).unwrap();
             assert_eq!(hex::decode(expected).unwrap(), hash);
         }
-
     }
 }
