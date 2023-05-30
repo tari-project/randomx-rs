@@ -683,4 +683,70 @@ mod tests {
         let light = light_vm.calculate_hash(input).unwrap();
         assert_eq!(fast, light);
     }
+
+    #[test]
+    fn test_vectors_fast_mode() {
+        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L994
+        let key = b"test key 000";
+        let vectors = [
+            (
+                b"This is a test".as_slice(),
+                "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f",
+            ),
+            (
+                b"Lorem ipsum dolor sit amet".as_slice(),
+                "300a0adb47603dedb42228ccb2b211104f4da45af709cd7547cd049e9489c969",
+            ),
+            (
+                b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+                "c36d4ed4191e617309867ed66a443be4075014e2b061bcdaf9ce7b721d2b77a8",
+            ),
+        ];
+
+        let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let dataset = RandomXDataset::new(flags, cache, 0).unwrap();
+        let vm = RandomXVM::new(flags, None, Some(dataset)).unwrap();
+
+        for (input, expected) in vectors {
+            let hash = vm.calculate_hash(input).unwrap();
+            assert_eq!(hex::decode(expected).unwrap(), hash);
+        }
+    }
+
+    #[test]
+    fn test_vectors_light_mode() {
+        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L994
+        let vectors = [
+            (
+                b"test key 000",
+                b"This is a test".as_slice(),
+                "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f",
+            ),
+            (
+                b"test key 000",
+                b"Lorem ipsum dolor sit amet".as_slice(),
+                "300a0adb47603dedb42228ccb2b211104f4da45af709cd7547cd049e9489c969",
+            ),
+            (
+                b"test key 000",
+                b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+                "c36d4ed4191e617309867ed66a443be4075014e2b061bcdaf9ce7b721d2b77a8",
+            ),
+            (
+                b"test key 001",
+                b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+                "e9ff4503201c0c2cca26d285c93ae883f9b1d30c9eb240b820756f2d5a7905fc",
+            ),
+        ];
+
+        let flags = RandomXFlag::get_recommended_flags();
+        for (key, input, expected) in vectors {
+            let cache = RandomXCache::new(flags, key).unwrap();
+            let vm = RandomXVM::new(flags, Some(cache), None).unwrap();
+            let hash = vm.calculate_hash(input).unwrap();
+            assert_eq!(hex::decode(expected).unwrap(), hash);
+        }
+
+    }
 }
