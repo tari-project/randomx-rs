@@ -124,8 +124,7 @@ fn main() {
         let android_sdk = env::var("ANDROID_SDK_ROOT").expect("ANDROID_SDK_ROOT variable not set");
 
         let android_platform = env::var("ANDROID_PLATFORM").unwrap_or_else(|_| "android-26".to_owned());
-        let android_cmake =
-            env::var("ANDROID_CMAKE").unwrap_or(android_sdk.clone() + "/cmake/3.22.1/bin/cmake");
+        let android_cmake = env::var("ANDROID_CMAKE").unwrap_or(android_sdk.clone() + "/cmake/3.22.1/bin/cmake");
         let android_toolchain = env::var("ANDROID_CMAKE_TOOLCHAIN")
             .unwrap_or(android_sdk + "/ndk/22.1.7171670/build/cmake/android.toolchain.cmake");
 
