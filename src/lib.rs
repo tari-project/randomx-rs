@@ -175,7 +175,7 @@ impl RandomXCache {
                 let inner = RandomXCacheInner { cache_ptr: test };
                 let result = RandomXCache { inner: Arc::new(inner) };
                 let key_ptr = key.as_ptr() as *mut c_void;
-                let key_size = key.len() as usize;
+                let key_size = key.len();
                 unsafe {
                     randomx_init_cache(result.inner.cache_ptr, key_ptr, key_size);
                 }
@@ -262,7 +262,7 @@ impl RandomXDataset {
             0 => Err(RandomXError::Other("Dataset item count was 0".to_string())),
             x => {
                 // This weirdness brought to you by c_ulong being different on Windows and Linux
-                Ok(u32::try_from(u64::from(x))?)
+                Ok(u32::try_from(x)?)
             },
         }
     }
@@ -392,7 +392,7 @@ impl RandomXVM {
         if input.is_empty() {
             Err(RandomXError::ParameterError("input was empty".to_string()))
         } else {
-            let size_input = input.len() as usize;
+            let size_input = input.len();
             let input_ptr = input.as_ptr() as *mut c_void;
             let arr = [0; RANDOMX_HASH_SIZE as usize];
             let output_ptr = arr.as_ptr() as *mut c_void;
@@ -450,7 +450,7 @@ impl RandomXVM {
                     }
                     return Err(RandomXError::ParameterError("input was empty".to_string()));
                 };
-                let size_input = input[i].len() as usize;
+                let size_input = input[i].len();
                 let input_ptr = input[i].as_ptr() as *mut c_void;
                 output_ptr = arr.as_ptr() as *mut c_void;
                 if i == 0 {

@@ -37,7 +37,7 @@ fn main() {
     let build_dir = &project_dir.join("randomx_build");
 
     env::set_current_dir(Path::new(&repo_dir)).unwrap(); // change current path to repo for dependency build
-    match fs::create_dir_all(&build_dir) {
+    match fs::create_dir_all(build_dir) {
         Ok(_) => (),
         Err(e) => match e.kind() {
             ErrorKind::AlreadyExists => (),
@@ -124,10 +124,9 @@ fn main() {
         let android_sdk = env::var("ANDROID_SDK_ROOT").expect("ANDROID_SDK_ROOT variable not set");
 
         let android_platform = env::var("ANDROID_PLATFORM").unwrap_or_else(|_| "android-26".to_owned());
-        let android_cmake =
-            env::var("ANDROID_CMAKE").unwrap_or(android_sdk.clone() + &"/cmake/3.22.1/bin/cmake".to_owned());
+        let android_cmake = env::var("ANDROID_CMAKE").unwrap_or(android_sdk.clone() + "/cmake/3.22.1/bin/cmake");
         let android_toolchain = env::var("ANDROID_CMAKE_TOOLCHAIN")
-            .unwrap_or(android_sdk + &"/ndk/22.1.7171670/build/cmake/android.toolchain.cmake".to_owned());
+            .unwrap_or(android_sdk + "/ndk/22.1.7171670/build/cmake/android.toolchain.cmake");
 
         let c = Command::new(android_cmake)
             .arg("-D")
