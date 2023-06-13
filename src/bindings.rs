@@ -22,8 +22,6 @@
 
 use libc::{c_uint, c_ulong, c_void};
 pub const RANDOMX_HASH_SIZE: u32 = 32;
-#[allow(dead_code)]
-pub const RANDOMX_DATASET_ITEM_SIZE: u32 = 64;
 
 #[repr(C)]
 pub struct randomx_dataset {
