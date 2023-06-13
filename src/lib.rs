@@ -662,18 +662,14 @@ mod tests {
         let input = b"input";
         let key = b"key";
 
-        let cache = RandomXCache::new(RandomXFlag::FLAG_DEFAULT, key).unwrap();
-        let dataset = RandomXDataset::new(RandomXFlag::FLAG_DEFAULT, cache.clone(), 0).unwrap();
-        let fast_vm = RandomXVM::new(
-            RandomXFlag::FLAG_HARD_AES | RandomXFlag::FLAG_FULL_MEM,
-            Some(cache),
-            Some(dataset),
-        )
-        .unwrap();
+        let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let dataset = RandomXDataset::new(flags, cache, 0).unwrap();
+        let fast_vm = RandomXVM::new(flags, None, Some(dataset)).unwrap();
 
-        let cache = RandomXCache::new(RandomXFlag::FLAG_DEFAULT, key).unwrap();
-        let dataset = RandomXDataset::new(RandomXFlag::FLAG_DEFAULT, cache.clone(), 0).unwrap();
-        let light_vm = RandomXVM::new(RandomXFlag::FLAG_HARD_AES, Some(cache), Some(dataset)).unwrap();
+        let flags = RandomXFlag::get_recommended_flags();
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let light_vm = RandomXVM::new(flags, Some(cache), None).unwrap();
 
         let fast = fast_vm.calculate_hash(input).unwrap();
         let light = light_vm.calculate_hash(input).unwrap();
