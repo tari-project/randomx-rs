@@ -79,27 +79,22 @@ extern "C" {
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::CString, mem, ptr};
+    use std::ptr;
 
-    use libc::{c_char, c_uint, c_void};
+    use libc::{c_uint, c_void};
 
     use super::*;
 
-    type ArrType = [c_char; RANDOMX_HASH_SIZE as usize]; // arr_type is the type in C
-
     #[test]
     fn alloc_cache() {
-        let key = "Key";
-        let c_key = CString::new(key).unwrap();
-        let c_key_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
+        let key = b"Key";
         let flag: c_uint = 0;
         let cache = unsafe { randomx_alloc_cache(flag) };
-        let size_key = c_key.as_bytes().len() * mem::size_of::<*const c_char>();
+        assert!(!cache.is_null(), "Failed to init cache");
 
         unsafe {
-            randomx_init_cache(cache, c_key_ptr, size_key);
+            randomx_init_cache(cache, key.as_ptr() as _, key.len());
         }
-        assert!(!cache.is_null(), "Failed to init cache");
         unsafe {
             randomx_release_cache(cache);
         }
@@ -107,20 +102,17 @@ mod tests {
 
     #[test]
     fn alloc_dataset() {
-        let key = "Key";
-        let c_key = CString::new(key).unwrap();
-        let c_key_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
+        let key = b"Key";
         let flag: c_uint = 0;
         let cache = unsafe { randomx_alloc_cache(flag) };
-        let size_key = c_key.as_bytes().len() * mem::size_of::<*const c_char>();
 
         unsafe {
-            randomx_init_cache(cache, c_key_ptr, size_key);
+            randomx_init_cache(cache, key.as_ptr() as _, key.len());
         }
 
         let dataset = unsafe { randomx_alloc_dataset(flag) };
 
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
+        unsafe { randomx_init_dataset(dataset, cache, 0, 1) };
 
         assert_ne!(unsafe { randomx_dataset_item_count() }, 0);
 
@@ -132,17 +124,13 @@ mod tests {
 
     #[test]
     fn alloc_vm() {
-        let key = "Key";
+        let key = b"Key";
         let flag: c_uint = 0;
 
-        let c_key = CString::new(key).unwrap();
-        let c_key_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
-
         let cache = unsafe { randomx_alloc_cache(flag) };
-        let size_key = c_key.as_bytes().len() * mem::size_of::<*const c_char>();
 
         unsafe {
-            randomx_init_cache(cache, c_key_ptr, size_key);
+            randomx_init_cache(cache, key.as_ptr() as _, key.len());
         }
         let mut vm = unsafe { randomx_create_vm(flag, cache, ptr::null_mut()) };
         if vm.is_null() {
@@ -150,12 +138,12 @@ mod tests {
         }
         unsafe {
             randomx_vm_set_cache(vm, cache);
+            randomx_destroy_vm(vm);
         }
-        if vm.is_null() {
-            panic!("Failed to re-init vm with new cache");
-        }
+
         let dataset = unsafe { randomx_alloc_dataset(flag) };
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
+        unsafe { randomx_init_dataset(dataset, cache, 0, 1) }
+
         vm = unsafe { randomx_create_vm(flag, cache, dataset) };
         if vm.is_null() {
             panic!("Failed to init vm with dataset");
@@ -163,9 +151,7 @@ mod tests {
         unsafe {
             randomx_vm_set_dataset(vm, dataset);
         }
-        if vm.is_null() {
-            panic!("Failed to re-init vm with new dataset");
-        }
+
         unsafe {
             randomx_release_dataset(dataset);
             randomx_release_cache(cache);
@@ -175,46 +161,28 @@ mod tests {
 
     #[test]
     fn calculate_hash() {
-        let key = "Key";
-        let input = "Input";
+        let key = b"test key 000";
+        let input = b"This is a test";
+        let expected = b"639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f";
 
         let flag: c_uint = 0;
 
-        let c_key = CString::new(key).unwrap();
-        let c_input = CString::new(input).unwrap();
-        let c_key_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
-        let c_input_ptr = c_input.as_bytes().as_ptr() as *mut c_void;
-
-        let arr: ArrType = [0; RANDOMX_HASH_SIZE as usize];
+        let arr = [0u8; RANDOMX_HASH_SIZE as usize];
         let output_ptr = arr.as_ptr() as *mut c_void;
 
         let cache = unsafe { randomx_alloc_cache(flag) };
-        let size_key = c_key.as_bytes().len() * mem::size_of::<*const c_char>();
-        let size_input = c_input.as_bytes().len() * mem::size_of::<*const c_char>();
 
         unsafe {
-            randomx_init_cache(cache, c_key_ptr, size_key);
+            randomx_init_cache(cache, key.as_ptr() as _, key.len());
         }
-
-        let dataset = unsafe { randomx_alloc_dataset(flag) };
-
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
 
         let vm = unsafe { randomx_create_vm(flag, cache, ptr::null_mut()) };
 
         unsafe {
-            randomx_calculate_hash(vm, c_input_ptr, size_input, output_ptr);
+            randomx_calculate_hash(vm, input.as_ptr() as _, input.len(), output_ptr);
         }
+        assert_eq!(hex::decode(expected).unwrap(), arr);
 
-        let mut vec = Vec::new();
-        let mut vec2 = Vec::new();
-
-        for i in 0..RANDOMX_HASH_SIZE {
-            #[allow(clippy::cast_sign_loss)]
-            vec.push(arr[i as usize] as u8);
-            vec2.push(0u8);
-        }
-        assert_ne!(vec, vec2); // vec2 is filled with 0
         unsafe {
             randomx_destroy_vm(vm);
             randomx_release_cache(cache);
@@ -224,85 +192,47 @@ mod tests {
     #[allow(clippy::cast_sign_loss)]
     #[test]
     fn calculate_hash_set() {
-        let key = "Key";
-        let input = "Input";
-        let input2 = "Input 2";
-        let input3 = "Input 3";
+        let key = b"test key 000";
+        let input = b"This is a test";
+        let expected = "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f";
+
+        let input2 = b"Lorem ipsum dolor sit amet";
+        let expected2 = "300a0adb47603dedb42228ccb2b211104f4da45af709cd7547cd049e9489c969";
+
+        let input3 = b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua";
+        let expected3 = "c36d4ed4191e617309867ed66a443be4075014e2b061bcdaf9ce7b721d2b77a8";
 
         let flag: c_uint = 0;
 
-        let c_key = CString::new(key).unwrap();
-        let c_input = CString::new(input).unwrap();
-        let c_input2 = CString::new(input2).unwrap();
-        let c_input3 = CString::new(input3).unwrap();
-        let c_key_ptr = c_key.as_bytes().as_ptr() as *mut c_void;
-        let c_input_ptr = c_input.as_bytes().as_ptr() as *mut c_void;
-        let c_input_ptr2 = c_input2.as_bytes().as_ptr() as *mut c_void;
-        let c_input_ptr3 = c_input3.as_bytes().as_ptr() as *mut c_void;
-
-        let arr: ArrType = [0; RANDOMX_HASH_SIZE as usize];
+        let arr = [0u8; RANDOMX_HASH_SIZE as usize];
         let output_ptr = arr.as_ptr() as *mut c_void;
 
         let cache = unsafe { randomx_alloc_cache(flag) };
-        let size_key = c_key.as_bytes().len() * mem::size_of::<*const c_char>();
-        let size_input = c_input.as_bytes().len() * mem::size_of::<*const c_char>();
-        let size_input2 = c_input2.as_bytes().len() * mem::size_of::<*const c_char>();
-        let size_input3 = c_input3.as_bytes().len() * mem::size_of::<*const c_char>();
 
         unsafe {
-            randomx_init_cache(cache, c_key_ptr, size_key);
+            randomx_init_cache(cache, key.as_ptr() as _, key.len());
         }
-
-        let dataset = unsafe { randomx_alloc_dataset(flag) };
-
-        unsafe { randomx_init_dataset(dataset, cache, 0, (RANDOMX_DATASET_ITEM_SIZE - 1) as c_ulong) }
 
         let vm = unsafe { randomx_create_vm(flag, cache, ptr::null_mut()) };
 
         unsafe {
-            randomx_calculate_hash_first(vm, c_input_ptr, size_input);
+            randomx_calculate_hash_first(vm, input.as_ptr() as _, input.len());
         }
-
-        let mut vec = Vec::new();
-        let mut vec2 = Vec::new();
-        let mut vec3 = Vec::new();
 
         unsafe {
-            randomx_calculate_hash_next(vm, c_input_ptr2, size_input2, output_ptr);
+            randomx_calculate_hash_next(vm, input2.as_ptr() as _, input2.len(), output_ptr);
         }
-
-        for i in 0..RANDOMX_HASH_SIZE {
-            vec.push(arr[i as usize] as u8);
-            vec2.push(0u8);
-            vec3.push(arr[i as usize] as u8);
-        }
-        assert_ne!(vec, vec2); // vec2 is filled with 0
+        assert_eq!(hex::decode(expected).unwrap(), arr);
 
         unsafe {
-            randomx_calculate_hash_next(vm, c_input_ptr3, size_input3, output_ptr);
+            randomx_calculate_hash_next(vm, input3.as_ptr() as _, input3.len(), output_ptr);
         }
-
-        for i in 0..RANDOMX_HASH_SIZE {
-            vec.push(arr[i as usize] as u8);
-            vec2.push(0u8);
-        }
-        assert_ne!(vec, vec2); // vec2 is filled with 0
-        assert_ne!(vec, vec3); // vec3 is previous hash
-
-        for i in 0..RANDOMX_HASH_SIZE {
-            vec3.push(arr[i as usize] as u8);
-        }
+        assert_eq!(hex::decode(expected2).unwrap(), arr);
 
         unsafe {
             randomx_calculate_hash_last(vm, output_ptr);
         }
-
-        for i in 0..RANDOMX_HASH_SIZE {
-            vec.push(arr[i as usize] as u8);
-            vec2.push(0u8);
-        }
-        assert_ne!(vec, vec2); // vec2 is filled with 0
-        assert_ne!(vec, vec3); // vec3 is previous hash
+        assert_eq!(hex::decode(expected3).unwrap(), arr);
 
         unsafe {
             randomx_destroy_vm(vm);
