@@ -54,7 +54,6 @@ use bindings::{
     randomx_vm,
     randomx_vm_set_cache,
     randomx_vm_set_dataset,
-    RANDOMX_DATASET_ITEM_SIZE,
     RANDOMX_HASH_SIZE,
 };
 use bitflags::bitflags;
@@ -221,43 +220,40 @@ impl RandomXDataset {
     // Conversions may be lossy on Windows or Linux
     #[allow(clippy::useless_conversion)]
     pub fn new(flags: RandomXFlag, cache: RandomXCache, start: u32) -> Result<RandomXDataset, RandomXError> {
-        let count = RANDOMX_DATASET_ITEM_SIZE - 1 - start;
+        let item_count = RandomXDataset::count()
+            .map_err(|e| RandomXError::CreationError(format!("Could not get dataset count: {e:?}")))?;
+
         let test = unsafe { randomx_alloc_dataset(flags.bits) };
         if test.is_null() {
             Err(RandomXError::CreationError("Could not allocate dataset".to_string()))
         } else {
             let inner = RandomXDatasetInner {
                 dataset_ptr: test,
-                dataset_count: count,
+                dataset_count: item_count,
                 cache,
             };
             let result = RandomXDataset { inner: Arc::new(inner) };
-            let item_count = result
-                .count()
-                .map_err(|err| RandomXError::CreationError(format!("Could not get dataset count:{}", err)))?;
-            // Mirror the assert checks inside randomx_init_dataset call
-            if (start < item_count && count <= item_count) || (start + item_count <= count) {
+
+            if start < item_count {
                 unsafe {
                     randomx_init_dataset(
                         result.inner.dataset_ptr,
                         result.inner.cache.inner.cache_ptr,
                         c_ulong::from(start),
-                        c_ulong::from(count),
+                        c_ulong::from(item_count),
                     );
                 }
                 Ok(result)
             } else {
-                let reason = format!(
-                    "Dataset `start` or `count` was out of bounds: start: {}, count: {}, actual count: {}",
-                    start, count, item_count
-                );
-                Err(RandomXError::CreationError(reason))
+                Err(RandomXError::CreationError(format!(
+                    "start must be less than item_count: start: {start}, item_count: {item_count}",
+                )))
             }
         }
     }
 
     /// Returns the number of items in the `dataset` or an error on failure.
-    pub fn count(&self) -> Result<u32, RandomXError> {
+    pub fn count() -> Result<u32, RandomXError> {
         match unsafe { randomx_dataset_item_count() } {
             0 => Err(RandomXError::Other("Dataset item count was 0".to_string())),
             x => {
@@ -659,5 +655,89 @@ mod tests {
             172, 253, 155, 204, 111, 183, 213, 157, 155
         ]);
         drop(vm1);
+    }
+
+    #[test]
+    fn randomx_hash_fast_vs_light() {
+        let input = b"input";
+        let key = b"key";
+
+        let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let dataset = RandomXDataset::new(flags, cache, 0).unwrap();
+        let fast_vm = RandomXVM::new(flags, None, Some(dataset)).unwrap();
+
+        let flags = RandomXFlag::get_recommended_flags();
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let light_vm = RandomXVM::new(flags, Some(cache), None).unwrap();
+
+        let fast = fast_vm.calculate_hash(input).unwrap();
+        let light = light_vm.calculate_hash(input).unwrap();
+        assert_eq!(fast, light);
+    }
+
+    #[test]
+    fn test_vectors_fast_mode() {
+        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L979
+        let key = b"test key 000";
+        let vectors = [
+            (
+                b"This is a test".as_slice(),
+                "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f",
+            ),
+            (
+                b"Lorem ipsum dolor sit amet".as_slice(),
+                "300a0adb47603dedb42228ccb2b211104f4da45af709cd7547cd049e9489c969",
+            ),
+            (
+                b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+                "c36d4ed4191e617309867ed66a443be4075014e2b061bcdaf9ce7b721d2b77a8",
+            ),
+        ];
+
+        let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM;
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let dataset = RandomXDataset::new(flags, cache, 0).unwrap();
+        let vm = RandomXVM::new(flags, None, Some(dataset)).unwrap();
+
+        for (input, expected) in vectors {
+            let hash = vm.calculate_hash(input).unwrap();
+            assert_eq!(hex::decode(expected).unwrap(), hash);
+        }
+    }
+
+    #[test]
+    fn test_vectors_light_mode() {
+        // test vectors from https://github.com/tevador/RandomX/blob/040f4500a6e79d54d84a668013a94507045e786f/src/tests/tests.cpp#L963-L985
+        let vectors = [
+            (
+                b"test key 000",
+                b"This is a test".as_slice(),
+                "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f",
+            ),
+            (
+                b"test key 000",
+                b"Lorem ipsum dolor sit amet".as_slice(),
+                "300a0adb47603dedb42228ccb2b211104f4da45af709cd7547cd049e9489c969",
+            ),
+            (
+                b"test key 000",
+                b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+                "c36d4ed4191e617309867ed66a443be4075014e2b061bcdaf9ce7b721d2b77a8",
+            ),
+            (
+                b"test key 001",
+                b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+                "e9ff4503201c0c2cca26d285c93ae883f9b1d30c9eb240b820756f2d5a7905fc",
+            ),
+        ];
+
+        let flags = RandomXFlag::get_recommended_flags();
+        for (key, input, expected) in vectors {
+            let cache = RandomXCache::new(flags, key).unwrap();
+            let vm = RandomXVM::new(flags, Some(cache), None).unwrap();
+            let hash = vm.calculate_hash(input).unwrap();
+            assert_eq!(hex::decode(expected).unwrap(), hash);
+        }
     }
 }
