@@ -2,10 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.1](https://github.com/tari-project/randomx-rs/compare/v1.1.15...v1.2.1) (2023-08-30)
+
+### Bug Fixes
+
+* fix compile on windows ([#61](https://github.com/tari-project/randomx-rs/issues/61)) ([646c615](https://github.com/tari-project/randomx-rs/commit/646c6150a01659417a2cacd9f1db0a7e492bdf1d))
+
 ## [1.2.0](https://github.com/tari-project/randomx-rs/compare/v1.1.15...v1.2.0) (2023-08-22)
 ### Feature
 
-Update random-x core library to commit hash (901f8ef765e7c274852dcb4d477247fd6747a5b8)
+* update randomx ([#60](https://github.com/tari-project/randomx-rs/issues/60)) ([5300721](https://github.com/tari-project/randomx-rs/commit/530072139e09a86b7247831f66b6ac6991c729e6))
 
 ### [1.1.15](https://github.com/tari-project/randomx-rs/compare/v1.1.14...v1.1.15) (2023-05-19)
 
