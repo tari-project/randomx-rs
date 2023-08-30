@@ -260,7 +260,7 @@ impl RandomXDataset {
                 // This weirdness brought to you by c_ulong being different on Windows and Linux
                 #[cfg(target_os = "windows")]
                 return Ok(x);
-                #[cfg(target_os = "linux")]
+                #[cfg(not(target_os = "windows"))]
                 return Ok(u32::try_from(x)?);
             },
         }
