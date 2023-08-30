@@ -258,7 +258,10 @@ impl RandomXDataset {
             0 => Err(RandomXError::Other("Dataset item count was 0".to_string())),
             x => {
                 // This weirdness brought to you by c_ulong being different on Windows and Linux
-                Ok(u32::try_from(x)?)
+                #[cfg(target_os = "windows")]
+                return Ok(x);
+                #[cfg(target_os = "linux")]
+                return Ok(u32::try_from(x)?);
             },
         }
     }
