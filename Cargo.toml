@@ -22,3 +22,4 @@ thiserror = "1.0.30"
 
 [dev-dependencies]
 hex = "0.4.3"
+quickcheck = "1"

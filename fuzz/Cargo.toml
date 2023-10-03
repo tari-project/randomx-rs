@@ -1,0 +1,51 @@
+[package]
+name = "monero-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.randomx-rs]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "randomx_alloc_cache"
+path = "fuzz_targets/randomx_alloc_cache.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "randomx_create_vm_with_cache_only"
+path = "fuzz_targets/randomx_create_vm_with_cache_only.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "randomx_create_vm_with_cache_and_dataset"
+path = "fuzz_targets/randomx_create_vm_with_cache_and_dataset.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "randomx_vm_calculate_hash_with_cache_only"
+path = "fuzz_targets/randomx_vm_calculate_hash_with_cache_only.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "randomx_vm_calculate_hash_with_cache_and_dataset"
+path = "fuzz_targets/randomx_vm_calculate_hash_with_cache_and_dataset.rs"
+test = false
+doc = false

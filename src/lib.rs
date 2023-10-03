@@ -35,6 +35,9 @@
 //! [RandomX github repo]: <https://github.com/tevador/RandomX>
 //! [design document]: <https://github.com/tevador/RandomX/blob/master/doc/design.md>
 mod bindings;
+/// Test utilities for fuzzing
+pub mod test_utils;
+
 use std::{convert::TryFrom, num::TryFromIntError, ptr, sync::Arc};
 
 use bindings::{
@@ -167,11 +170,11 @@ impl RandomXCache {
         if key.is_empty() {
             Err(RandomXError::ParameterError("key is empty".to_string()))
         } else {
-            let test = unsafe { randomx_alloc_cache(flags.bits) };
-            if test.is_null() {
+            let cache_ptr = unsafe { randomx_alloc_cache(flags.bits) };
+            if cache_ptr.is_null() {
                 Err(RandomXError::CreationError("Could not allocate cache".to_string()))
             } else {
-                let inner = RandomXCacheInner { cache_ptr: test };
+                let inner = RandomXCacheInner { cache_ptr };
                 let result = RandomXCache { inner: Arc::new(inner) };
                 let key_ptr = key.as_ptr() as *mut c_void;
                 let key_size = key.len();
@@ -480,7 +483,9 @@ impl RandomXVM {
 
 #[cfg(test)]
 mod tests {
-    use crate::{RandomXCache, RandomXDataset, RandomXFlag, RandomXVM};
+    use std::{ptr, sync::Arc};
+
+    use crate::{RandomXCache, RandomXCacheInner, RandomXDataset, RandomXDatasetInner, RandomXFlag, RandomXVM};
 
     #[test]
     fn lib_alloc_cache() {
@@ -522,10 +527,31 @@ mod tests {
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
         let memory = dataset.get_data().unwrap_or_else(|_| std::vec::Vec::new());
         assert!(!memory.is_empty(), "Failed to get dataset memory");
-        let vec = vec![0u8; memory.len() as usize];
+        let vec = vec![0u8; memory.len()];
         assert_ne!(memory, vec);
         drop(dataset);
         drop(cache);
+    }
+
+    #[test]
+    fn test_null_assignments() {
+        let flags = RandomXFlag::get_recommended_flags();
+        if let Ok(mut vm) = RandomXVM::new(flags, None, None) {
+            let cache = RandomXCache {
+                inner: Arc::new(RandomXCacheInner {
+                    cache_ptr: ptr::null_mut(),
+                }),
+            };
+            assert!(vm.reinit_cache(cache.clone()).is_err());
+            let dataset = RandomXDataset {
+                inner: Arc::new(RandomXDatasetInner {
+                    dataset_ptr: ptr::null_mut(),
+                    dataset_count: 0,
+                    cache,
+                }),
+            };
+            assert!(vm.reinit_dataset(dataset.clone()).is_err());
+        }
     }
 
     #[test]
@@ -537,7 +563,7 @@ mod tests {
         let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let mut vm1 = RandomXVM::new(flags, Some(cache1.clone()), None).unwrap();
         let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
-        let vec = vec![0u8; hash1.len() as usize];
+        let vec = vec![0u8; hash1.len()];
         assert_ne!(hash1, vec);
         let reinit_cache = vm1.reinit_cache(cache1.clone());
         assert!(reinit_cache.is_ok());
@@ -589,7 +615,7 @@ mod tests {
         assert_eq!(inputs.len(), hashes.len());
         let mut prev_hash = Vec::new();
         for (i, hash) in hashes.into_iter().enumerate() {
-            let vec = vec![0u8; hash.len() as usize];
+            let vec = vec![0u8; hash.len()];
             assert_ne!(hash, vec);
             assert_ne!(hash, prev_hash);
             let compare = vm.calculate_hash(inputs[i]).unwrap(); // sanity check
