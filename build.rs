@@ -214,7 +214,7 @@ fn main() {
         println!("cargo:rustc-link-lib=static=randomx");
     } // link to RandomX
 
-    if target.contains("apple") || target.contains("android") {
+    if target.contains("apple") || target.contains("android") || target.contains("freebsd") {
         println!("cargo:rustc-link-lib=dylib=c++");
     } else if target.contains("linux") {
         println!("cargo:rustc-link-lib=dylib=stdc++");
