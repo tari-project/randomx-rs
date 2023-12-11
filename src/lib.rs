@@ -522,7 +522,7 @@ mod tests {
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
         let memory = dataset.get_data().unwrap_or_else(|_| std::vec::Vec::new());
         assert!(!memory.is_empty(), "Failed to get dataset memory");
-        let vec = vec![0u8; memory.len() as usize];
+        let vec = vec![0u8; memory.len()];
         assert_ne!(memory, vec);
         drop(dataset);
         drop(cache);
@@ -537,7 +537,7 @@ mod tests {
         let cache1 = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let mut vm1 = RandomXVM::new(flags, Some(cache1.clone()), None).unwrap();
         let hash1 = vm1.calculate_hash(input.as_bytes()).expect("no data");
-        let vec = vec![0u8; hash1.len() as usize];
+        let vec = vec![0u8; hash1.len()];
         assert_ne!(hash1, vec);
         let reinit_cache = vm1.reinit_cache(cache1.clone());
         assert!(reinit_cache.is_ok());
@@ -589,7 +589,7 @@ mod tests {
         assert_eq!(inputs.len(), hashes.len());
         let mut prev_hash = Vec::new();
         for (i, hash) in hashes.into_iter().enumerate() {
-            let vec = vec![0u8; hash.len() as usize];
+            let vec = vec![0u8; hash.len()];
             assert_ne!(hash, vec);
             assert_ne!(hash, prev_hash);
             let compare = vm.calculate_hash(inputs[i]).unwrap(); // sanity check
