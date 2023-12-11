@@ -35,6 +35,9 @@
 //! [RandomX github repo]: <https://github.com/tevador/RandomX>
 //! [design document]: <https://github.com/tevador/RandomX/blob/master/doc/design.md>
 mod bindings;
+/// Test utilities for fuzzing
+pub mod test_utils;
+
 use std::{convert::TryFrom, num::TryFromIntError, ptr, sync::Arc};
 
 use bindings::{
@@ -167,11 +170,11 @@ impl RandomXCache {
         if key.is_empty() {
             Err(RandomXError::ParameterError("key is empty".to_string()))
         } else {
-            let test = unsafe { randomx_alloc_cache(flags.bits) };
-            if test.is_null() {
+            let cache_ptr = unsafe { randomx_alloc_cache(flags.bits) };
+            if cache_ptr.is_null() {
                 Err(RandomXError::CreationError("Could not allocate cache".to_string()))
             } else {
-                let inner = RandomXCacheInner { cache_ptr: test };
+                let inner = RandomXCacheInner { cache_ptr };
                 let result = RandomXCache { inner: Arc::new(inner) };
                 let key_ptr = key.as_ptr() as *mut c_void;
                 let key_size = key.len();
@@ -480,7 +483,9 @@ impl RandomXVM {
 
 #[cfg(test)]
 mod tests {
-    use crate::{RandomXCache, RandomXDataset, RandomXFlag, RandomXVM};
+    use std::{ptr, sync::Arc};
+
+    use crate::{RandomXCache, RandomXCacheInner, RandomXDataset, RandomXDatasetInner, RandomXFlag, RandomXVM};
 
     #[test]
     fn lib_alloc_cache() {
@@ -526,6 +531,27 @@ mod tests {
         assert_ne!(memory, vec);
         drop(dataset);
         drop(cache);
+    }
+
+    #[test]
+    fn test_null_assignments() {
+        let flags = RandomXFlag::get_recommended_flags();
+        if let Ok(mut vm) = RandomXVM::new(flags, None, None) {
+            let cache = RandomXCache {
+                inner: Arc::new(RandomXCacheInner {
+                    cache_ptr: ptr::null_mut(),
+                }),
+            };
+            assert!(vm.reinit_cache(cache.clone()).is_err());
+            let dataset = RandomXDataset {
+                inner: Arc::new(RandomXDatasetInner {
+                    dataset_ptr: ptr::null_mut(),
+                    dataset_count: 0,
+                    cache,
+                }),
+            };
+            assert!(vm.reinit_dataset(dataset.clone()).is_err());
+        }
     }
 
     #[test]
