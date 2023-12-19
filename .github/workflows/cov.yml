@@ -1,39 +1,48 @@
+---
 name: Coverage
-on:
+
+'on':
   push:
     branches:
       - development
       - cov-*
+
 env:
   RUSTUP_TOOLCHAIN: "nightly"
+
 jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "true"
+
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y jq lcov
-      - name: Download Rust
-        uses: actions-rs/toolchain@v1
+          sudo apt install --no-install-recommends --assume-yes \
+            jq lcov
+
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: nightly
-          override: true
           components: llvm-tools-preview
+
       - name: Install requirements for code coverage
         run: |
           cargo install cargo-binutils
           cargo install rustfilt
+
       - name: Run test coverage
         id: coverage
         env:
           SKIP_HTML: "1"
         run: |
           /bin/bash -c ./code_coverage.sh
+
       - name: Coveralls upload
         uses: coverallsapp/github-action@master
         with:

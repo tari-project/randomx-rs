@@ -1,6 +1,10 @@
+---
 name: CI
 
-on: [push, pull_request]
+'on': [push, pull_request]
+
+env:
+  toolchain: nightly-2022-11-03
 
 jobs:
   clippy:
@@ -8,68 +12,69 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "true"
+
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly-2022-11-03
-          profile: minimal
+          toolchain: ${{ env.toolchain }}
           components: rustfmt, clippy
-          override: true
-      - uses: Swatinem/rust-cache@v1
+
+      - name: Cache rust dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-      - name: install cargo lints
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: cargo-lints
-      - name: cargo lints clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: lints
-          args: clippy
+        run: |
+          cargo +${{ env.toolchain }} fmt --all -- --check
+
+      - name: Install cargo-lints
+        run: |
+          cargo install cargo-lints
+
+      - name: Clippy check (with lints)
+        run: |
+          cargo lints clippy --all-targets --all-features
+
   build:
     name: build
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "true"
+
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          profile: minimal
-          override: true
-      - uses: Swatinem/rust-cache@v1
+
+      - name: Cache rust dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
+        run: |
+          cargo build --release
+
   test:
     name: test
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: "true"
+
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          profile: minimal
-          override: true
-      - uses: Swatinem/rust-cache@v1
+
+      - name: Cache rust dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: |
+          cargo test
