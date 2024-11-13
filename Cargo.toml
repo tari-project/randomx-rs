@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/randomx-rs"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.3.1"
+version = "1.3.2"
 edition = "2018"
 build = "build.rs"
 

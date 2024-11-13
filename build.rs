@@ -52,16 +52,46 @@ fn main() {
     let target = env::var("TARGET").unwrap();
     // println!("target: {}", target);
     if host.contains("windows") && target.contains("windows-msvc") {
-        let c = Command::new("cmake")
+        let mut err_1 = "".to_string();
+        let mut err_2 = "".to_string();
+        let mut err_3 = "".to_string();
+        let mut success = false;
+        if let Ok(val) = Command::new("cmake")
             .arg("-G")
-            .arg("Visual Studio 16 2019")
+            .arg("Visual Studio 17 2022")
             .arg(repo_dir.to_str().unwrap())
             .output()
-            .expect("failed to execute CMake");
-        println!("status: {}", c.status);
-        std::io::stdout().write_all(&c.stdout).unwrap();
-        std::io::stderr().write_all(&c.stderr).unwrap();
-        assert!(c.status.success());
+        {
+            if val.status.success() {
+                success = true;
+            } else {
+                err_1 = String::from_utf8_lossy(&val.stderr).to_string();
+            }
+        }
+        if !success {
+            println!("'Visual Studio 17 2022' not found, trying 'Visual Studio 16 2019'");
+            match Command::new("cmake")
+                .arg("-G")
+                .arg("Visual Studio 16 2019")
+                .arg(repo_dir.to_str().unwrap())
+                .output()
+            {
+                Ok(val) => {
+                    if val.status.success() {
+                        success = true;
+                    } else {
+                        err_2 = String::from_utf8_lossy(&val.stderr).to_string();
+                    }
+                },
+                Err(err) => err_3 = err.to_string(),
+            }
+        }
+        if !success {
+            panic!(
+                "CMake failed with either Visual Studio 2022 (\n{}\n) or 'Visual Studio 16 2019' (\n{}\n) or (\n{}\n)",
+                err_1, err_2, err_3
+            );
+        }
 
         let m = Command::new("cmake")
             .arg("--build")
