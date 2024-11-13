@@ -79,6 +79,8 @@ fn main() {
                         let _unused = fs::remove_file(path);
                     } else if path.is_dir() {
                         let _unused = fs::remove_dir_all(path);
+                    } else {
+                        // Nothing here
                     }
                 }
             }
