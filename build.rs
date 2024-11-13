@@ -73,14 +73,12 @@ fn main() {
 
             // Remove all files (contents) from 'build_dir', but not 'build_dir' itself
             if let Ok(dir_list) = fs::read_dir(build_dir) {
-                for entry in dir_list {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-                        if path.is_file() {
-                            let _unused = fs::remove_file(path);
-                        } else if path.is_dir() {
-                            let _unused = fs::remove_dir_all(path);
-                        }
+                for entry in dir_list.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        let _unused = fs::remove_file(path);
+                    } else if path.is_dir() {
+                        let _unused = fs::remove_dir_all(path);
                     }
                 }
             }
