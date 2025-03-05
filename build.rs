@@ -284,7 +284,7 @@ fn main() {
 
     env::set_current_dir(Path::new(&project_dir)).unwrap(); // change path back to main project
 
-    if target.contains("windows") {
+    if target.contains("windows-msvc") {
         let include = &build_dir.join("Release");
         println!("cargo:rustc-link-search=native={}", &include.to_str().unwrap());
         println!("cargo:rustc-link-lib=static=randomx");
@@ -295,9 +295,9 @@ fn main() {
 
     if target.contains("apple") || target.contains("android") || target.contains("freebsd") {
         println!("cargo:rustc-link-lib=dylib=c++");
-    } else if target.contains("linux") {
+    } else if target.contains("linux") || target.contains("windows-gnu") {
         println!("cargo:rustc-link-lib=dylib=stdc++");
-    } else if target.contains("windows") {
+    } else if target.contains("windows-msvc") {
         // println!("cargo:rustc-link-lib=dylib=c++");
     } else {
         unimplemented!();
