@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::{
     env,
     fs,
@@ -50,23 +51,62 @@ fn main() {
     // println!("host: {}", host);
     let target = env::var("TARGET").unwrap();
     // println!("target: {}", target);
-    if host.contains("windows") {
-        let generator = if target.contains("windows-msvc") {
-            "Visual Studio 16 2019"
-        } else {
-            "Ninja"
-        };
-
-        let c = Command::new("cmake")
+    if host.contains("windows") && target.contains("windows-msvc") {
+        let mut err_1 = "".to_string();
+        let mut err_2 = "".to_string();
+        let mut err_3 = "".to_string();
+        let mut success = false;
+        if let Ok(val) = Command::new("cmake")
             .arg("-G")
-            .arg(generator)
+            .arg("Visual Studio 17 2022")
             .arg(repo_dir.to_str().unwrap())
             .output()
-            .expect("failed to execute CMake");
-        println!("status: {}", c.status);
-        std::io::stdout().write_all(&c.stdout).unwrap();
-        std::io::stderr().write_all(&c.stderr).unwrap();
-        assert!(c.status.success());
+        {
+            if val.status.success() {
+                success = true;
+            } else {
+                err_1 = String::from_utf8_lossy(&val.stderr).to_string();
+            }
+        }
+        if !success {
+            println!("'Visual Studio 17 2022' not found, trying 'Visual Studio 16 2019'");
+
+            // Remove all files (contents) from 'build_dir', but not 'build_dir' itself
+            if let Ok(dir_list) = fs::read_dir(build_dir) {
+                for entry in dir_list.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        let _unused = fs::remove_file(path);
+                    } else if path.is_dir() {
+                        let _unused = fs::remove_dir_all(path);
+                    } else {
+                        // Nothing here
+                    }
+                }
+            }
+
+            match Command::new("cmake")
+                .arg("-G")
+                .arg("Visual Studio 16 2019")
+                .arg(repo_dir.to_str().unwrap())
+                .output()
+            {
+                Ok(val) => {
+                    if val.status.success() {
+                        success = true;
+                    } else {
+                        err_2 = String::from_utf8_lossy(&val.stderr).to_string();
+                    }
+                },
+                Err(err) => err_3 = err.to_string(),
+            }
+        }
+        if !success {
+            panic!(
+                "CMake failed with either Visual Studio 2022 (\n{}\n) or 'Visual Studio 16 2019' (\n{}\n) or (\n{}\n)",
+                err_1, err_2, err_3
+            );
+        }
 
         let m = Command::new("cmake")
             .arg("--build")
@@ -93,6 +133,39 @@ fn main() {
             .arg("CMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc")
             .arg("-D")
             .arg("CMAKE_CXX_COMPILER=/usr/bin/aarch64-linux-gnu-g++")
+            .arg(repo_dir.to_str().unwrap())
+            .output()
+            .expect("failed to execute CMake");
+        println!("status: {}", c.status);
+        std::io::stdout().write_all(&c.stdout).unwrap();
+        std::io::stderr().write_all(&c.stderr).unwrap();
+        assert!(c.status.success());
+
+        let m = Command::new("cmake")
+            .arg("--build")
+            .arg(".")
+            .arg("--config")
+            .arg("Release")
+            .output()
+            .expect("failed to execute Make");
+        println!("status: {}", m.status);
+        std::io::stdout().write_all(&m.stdout).unwrap();
+        std::io::stderr().write_all(&m.stderr).unwrap();
+        assert!(m.status.success());
+    } else if target.contains("riscv64gc-unknown-linux-gnu") {
+        let c = Command::new("cmake")
+            .arg("-D")
+            .arg("ARCH=rv64gc")
+            .arg("-D")
+            .arg("ARCH_ID=riscv64")
+            .arg("-D")
+            .arg("CMAKE_CROSSCOMPILING=true")
+            .arg("-D")
+            .arg("CMAKE_SYSTEM_PROCESSOR=riscv64")
+            .arg("-D")
+            .arg("CMAKE_C_COMPILER=/usr/bin/riscv64-linux-gnu-gcc")
+            .arg("-D")
+            .arg("CMAKE_CXX_COMPILER=/usr/bin/riscv64-linux-gnu-g++")
             .arg(repo_dir.to_str().unwrap())
             .output()
             .expect("failed to execute CMake");

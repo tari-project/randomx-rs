@@ -1,18 +1,43 @@
 ---
-name: Security audit
+name: Security audit - daily
 
 'on':
   push:
-  pull_request:
+    paths:
+      # Run if workflow changes
+      - '.github/workflows/audit.yml'
+      # Run on changed dependencies
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      # Run if the configuration file changes
+      - '**/audit.toml'
+  # Rerun periodicly to pick up new advisories
   schedule:
-    - cron: "43 04 * * *"
+    - cron: '43 05 * * *'
+  # Run manually
+  workflow_dispatch:
+
+env:
+  toolchain: nightly-2022-11-03
 
 jobs:
   security_audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: "true"
 
-      - uses: rustsec/audit-check@v1.4.1
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: rustfmt, clippy
+
+      - name: cargo check
+        run: |
+          cargo check
+
+      - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

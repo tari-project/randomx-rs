@@ -41,7 +41,7 @@ jobs:
         env:
           SKIP_HTML: "1"
         run: |
-          /bin/bash -c ./code_coverage.sh
+          /bin/bash -c ./scripts/code_coverage.sh
 
       - name: Coveralls upload
         uses: coverallsapp/github-action@master
