@@ -1,15 +1,32 @@
 ---
 name: CI
 
-'on': [push, pull_request]
+'on':
+  workflow_dispatch:
+  push:
+    branches:
+      - "ci-*"
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  merge_group:
 
 env:
   toolchain: nightly-2022-11-03
 
+concurrency:
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
+
+permissions: {}
+
 jobs:
   clippy:
     name: clippy
-    runs-on: ubuntu-latest
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -23,7 +40,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2
 
       - name: cargo fmt
         run: |
@@ -37,9 +54,48 @@ jobs:
         run: |
           cargo lints clippy --all-targets --all-features
 
+  machete:
+    # Checks for unused dependencies.
+    name: machete
+    runs-on: [ ubuntu-latest ]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: "true"
+
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+
+      - name: Cache rust dependencies
+        uses: swatinem/rust-cache@v2
+
+      - name: cargo machete
+        run: |
+          cargo install cargo-machete
+          cargo machete
+
+  file-licenses:
+    name: file-licenses
+    runs-on: [ ubuntu-latest ]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: install ripgrep
+        run: |
+          # https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb.sha256
+          wget -v https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
+          rg --version || exit 1
+      - name: run the license check
+        run: ./scripts/file_license_check.sh
+
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
