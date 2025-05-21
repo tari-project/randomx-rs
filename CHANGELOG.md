@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file. See [standa
 ## [1.4.0](https://github.com/tari-project/randomx-rs/compare/v1.3.2...v1.4.0) (2025-05-21)
 ### Feature
 
-* switch to cmake crate and support less hard coded build system
+* switch to cmake crate and support less hard-coded build system
 
 ## [1.3.2](https://github.com/tari-project/randomx-rs/compare/v1.3.1...v1.3.2) (2024-11-13)
 ### Feature
