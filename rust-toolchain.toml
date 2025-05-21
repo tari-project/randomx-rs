@@ -2,3 +2,4 @@
 # only used for cargo fmt settings, repo should always compile on stable too
 [toolchain]
 channel = "stable"
+components = ["rustfmt", "clippy"]
