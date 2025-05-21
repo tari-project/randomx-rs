@@ -33,9 +33,9 @@ fn main() {
     println!("cargo:rustc-link-lib=static=randomx");
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or("linux".to_string());
     let dylib_name = match target_os.as_str() {
-        "macos" | "ios" => "c++",  // macOS and iOS use "c++"
-        "windows" => "msvcrt",     // Use MSVC runtime on Windows
-        _ => "stdc++",             // Default for other systems (Linux, etc.)
+        "macos" | "ios" => "c++", // macOS and iOS use "c++"
+        "windows" => "msvcrt",    // Use MSVC runtime on Windows
+        _ => "stdc++",            // Default for other systems (Linux, etc.)
     };
     println!("cargo:rustc-link-lib=dylib={}", dylib_name);
 
