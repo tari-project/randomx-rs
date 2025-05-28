@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::env;
+use std::{env, fs::read_to_string};
 
 use cmake::Config;
 
@@ -29,7 +29,14 @@ fn main() {
     let randomx_path = Config::new(env::var("RANDOMX_DIR").unwrap_or_else(|_| "RandomX".to_string()))
         .define("DARCH", "native")
         .build();
-    println!("cargo:rustc-link-search=native={}/lib", randomx_path.display());
+
+    let lib_dir = if read_to_string("/etc/os-release").is_ok_and(|s| s.contains("Fedora")) {
+        "lib64"
+    } else {
+        "lib"
+    };
+
+    println!("cargo:rustc-link-search=native={}/{lib_dir}", randomx_path.display());
     println!("cargo:rustc-link-lib=static=randomx");
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or("linux".to_string());
     let dylib_name = match target_os.as_str() {
