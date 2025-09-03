@@ -29,6 +29,8 @@ fn main() {
     let randomx_path = Config::new(env::var("RANDOMX_DIR").unwrap_or_else(|_| "RandomX".to_string()))
         .define("DARCH", "native")
         .build();
+
+    println!("cargo:rustc-link-search=native={}/lib64", randomx_path.display());
     println!("cargo:rustc-link-search=native={}/lib", randomx_path.display());
     println!("cargo:rustc-link-lib=static=randomx");
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or("linux".to_string());
