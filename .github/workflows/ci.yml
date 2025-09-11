@@ -29,7 +29,7 @@ jobs:
     runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "true"
 
@@ -60,7 +60,7 @@ jobs:
     runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "true"
 
@@ -83,7 +83,7 @@ jobs:
     runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: install ripgrep
         run: |
           # https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb.sha256
@@ -98,7 +98,7 @@ jobs:
     runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "true"
 
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "true"
 
