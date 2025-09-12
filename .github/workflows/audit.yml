@@ -1,5 +1,5 @@
 ---
-name: Security audit - daily
+name: Security audit - weekly
 
 'on':
   push:
@@ -13,7 +13,7 @@ name: Security audit - daily
       - '**/audit.toml'
   # Rerun periodicly to pick up new advisories
   schedule:
-    - cron: '43 05 * * *'
+    - cron: '43 05 * * 0'
   # Run manually
   workflow_dispatch:
 
@@ -24,7 +24,7 @@ jobs:
   security_audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: "true"
 
