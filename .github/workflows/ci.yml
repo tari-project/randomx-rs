@@ -5,8 +5,11 @@ name: CI
   workflow_dispatch:
   push:
     branches:
-      - "ci-*"
+      - "development"
+      - "build-ci-*"
   pull_request:
+    branches:
+      - "development"
     types:
       - opened
       - reopened
