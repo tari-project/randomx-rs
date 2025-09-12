@@ -14,7 +14,7 @@ name: CI
   merge_group:
 
 env:
-  toolchain: nightly-2022-11-03
+  nightly_toolchain: nightly-2025-06-01
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
@@ -36,7 +36,7 @@ jobs:
       - name: toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: ${{ env.nightly_toolchain }}
           components: rustfmt, clippy
 
       - name: Cache rust dependencies
@@ -44,7 +44,7 @@ jobs:
 
       - name: cargo fmt
         run: |
-          cargo +${{ env.toolchain }} fmt --all -- --check
+          cargo +${{ env.nightly_toolchain }} fmt --all -- --check
 
       - name: Install cargo-lints
         run: |
@@ -54,29 +54,17 @@ jobs:
         run: |
           cargo lints clippy --all-targets --all-features
 
-  machete:
-    # Checks for unused dependencies.
-    name: machete
-    runs-on: [ ubuntu-latest ]
-    steps:
-      - name: checkout
-        uses: actions/checkout@v5
-        with:
-          submodules: "true"
-
-      - name: toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.toolchain }}
-          components: clippy, rustfmt
-
-      - name: Cache rust dependencies
-        uses: swatinem/rust-cache@v2
-
       - name: cargo machete
         run: |
-          cargo install cargo-machete
+          cargo install cargo-machete@0.7.0
           cargo machete
+
+      - name: cargo vet
+        # Disable cargo vet
+        if: ${{ false }}
+        run: |
+          cargo install cargo-vet@0.10.0 --locked
+          cargo vet
 
   file-licenses:
     name: file-licenses
@@ -110,9 +98,8 @@ jobs:
       - name: Cache rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: cargo build
-        run: |
-          cargo build --release
+      - name: cargo check
+        run: cargo check --release --all-targets --workspace --locked
 
   test:
     name: test
