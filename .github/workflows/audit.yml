@@ -17,8 +17,7 @@ name: Security audit - weekly
   # Run manually
   workflow_dispatch:
 
-env:
-  toolchain: nightly-2022-11-03
+permissions: {}
 
 jobs:
   security_audit:
@@ -29,9 +28,9 @@ jobs:
           submodules: "true"
 
       - name: toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: stable
           components: rustfmt, clippy
 
       - name: cargo check
