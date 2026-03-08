@@ -173,16 +173,32 @@ impl RandomXDataset {
         }
     }
 
+    /// Returns the values of the internal memory buffer of the `dataset` or an error on failure.
+    /// The dataset consists of items, each RANDOMX_DATASET_ITEM_SIZE bytes (64 bytes).
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
         let memory = unsafe { randomx_get_dataset_memory(self.dataset) };
         if memory.is_null() {
             return Err(RandomXError::Other);
         }
-        let mut result = Vec::new();
+
+        // Calculate total bytes: item_count * bytes_per_item
+        // dataset_count appears to be used as an end index (exclusive range)
+        let item_count = (self.dataset_count - self.dataset_start) as usize;
+        let item_size = RANDOMX_DATASET_ITEM_SIZE as usize;
+        let byte_count = item_count.checked_mul(item_size)
+            .ok_or_else(|| RandomXError::Other)?;
+
+        // Calculate byte offset for the start position
+        let start_byte_offset = (self.dataset_start as usize).checked_mul(item_size)
+            .ok_or_else(|| RandomXError::Other)?;
+
+        let mut result: Vec<u8> = vec![0u8; byte_count];
         unsafe {
-            for i in self.dataset_start..self.dataset_count {
-                result.push(memory.offset(i as isize) as u8);
-            }
+            libc::memcpy(
+                result.as_mut_ptr() as *mut c_void,
+                (memory as *const u8).add(start_byte_offset) as *const c_void,
+                byte_count
+            );
         }
         Ok(result)
     }
