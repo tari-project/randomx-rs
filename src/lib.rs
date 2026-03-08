@@ -175,22 +175,53 @@ impl RandomXDataset {
 
     /// Returns the values of the internal memory buffer of the `dataset` or an error on failure.
     /// The dataset consists of items, each RANDOMX_DATASET_ITEM_SIZE bytes (64 bytes).
+    ///
+    /// # Safety
+    ///
+    /// This function assumes the dataset has been properly initialized. The dataset range
+    /// [dataset_start, dataset_count) is validated against bounds.
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
         let memory = unsafe { randomx_get_dataset_memory(self.dataset) };
         if memory.is_null() {
             return Err(RandomXError::Other);
         }
 
+        // Validate range consistency
+        if self.dataset_start > self.dataset_count {
+            return Err(RandomXError::Other);
+        }
+
+        // Get actual dataset size for bounds checking
+        let total_items = match self.count() {
+            Ok(count) => count as usize,
+            Err(_) => return Err(RandomXError::Other),
+        };
+
+        // Validate dataset range is within bounds
+        if self.dataset_count as usize > total_items {
+            return Err(RandomXError::Other);
+        }
+
         // Calculate total bytes: item_count * bytes_per_item
-        // dataset_count appears to be used as an end index (exclusive range)
-        let item_count = (self.dataset_count - self.dataset_start) as usize;
+        // Note: dataset_count is used as an end index (exclusive range)
+        let item_count = usize::try_from(self.dataset_count - self.dataset_start)
+            .map_err(|_| RandomXError::Other)?;
         let item_size = RANDOMX_DATASET_ITEM_SIZE as usize;
         let byte_count = item_count.checked_mul(item_size)
             .ok_or_else(|| RandomXError::Other)?;
 
         // Calculate byte offset for the start position
-        let start_byte_offset = (self.dataset_start as usize).checked_mul(item_size)
+        let start_byte_offset = usize::try_from(self.dataset_start)
+            .map_err(|_| RandomXError::Other)?
+            .checked_mul(item_size)
             .ok_or_else(|| RandomXError::Other)?;
+
+        // Verify total access is within dataset bounds
+        let total_dataset_bytes = total_items.checked_mul(item_size)
+            .ok_or_else(|| RandomXError::Other)?;
+        if start_byte_offset.saturating_add(byte_count) > total_dataset_bytes {
+            return Err(RandomXError::Other);
+        }
 
         let mut result: Vec<u8> = vec![0u8; byte_count];
         unsafe {
