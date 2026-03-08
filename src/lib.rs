@@ -173,16 +173,63 @@ impl RandomXDataset {
         }
     }
 
+    /// Returns the values of the internal memory buffer of the `dataset` or an error on failure.
+    /// The dataset consists of items, each RANDOMX_DATASET_ITEM_SIZE bytes (64 bytes).
+    ///
+    /// # Safety
+    ///
+    /// This function assumes the dataset has been properly initialized. The dataset range
+    /// [dataset_start, dataset_count) is validated against bounds.
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
         let memory = unsafe { randomx_get_dataset_memory(self.dataset) };
         if memory.is_null() {
             return Err(RandomXError::Other);
         }
-        let mut result = Vec::new();
+
+        // Validate range consistency
+        if self.dataset_start > self.dataset_count {
+            return Err(RandomXError::Other);
+        }
+
+        // Get actual dataset size for bounds checking
+        let total_items = match self.count() {
+            Ok(count) => usize::try_from(count).map_err(|_| RandomXError::Other)?,
+            Err(_) => return Err(RandomXError::Other),
+        };
+
+        // Calculate total bytes: item_count * bytes_per_item
+        // Note: dataset_count is used as an end index (exclusive range)
+        let item_count = usize::try_from(self.dataset_count - self.dataset_start)
+            .map_err(|_| RandomXError::Other)?;
+
+        // Validate dataset range is within bounds (checked after try_from to ensure no overflow)
+        if self.dataset_count > total_items as u64 {
+            return Err(RandomXError::Other);
+        }
+        let item_size = RANDOMX_DATASET_ITEM_SIZE as usize;
+        let byte_count = item_count.checked_mul(item_size)
+            .ok_or_else(|| RandomXError::Other)?;
+
+        // Calculate byte offset for the start position
+        let start_byte_offset = usize::try_from(self.dataset_start)
+            .map_err(|_| RandomXError::Other)?
+            .checked_mul(item_size)
+            .ok_or_else(|| RandomXError::Other)?;
+
+        // Verify total access is within dataset bounds
+        let total_dataset_bytes = total_items.checked_mul(item_size)
+            .ok_or_else(|| RandomXError::Other)?;
+        if start_byte_offset.saturating_add(byte_count) > total_dataset_bytes {
+            return Err(RandomXError::Other);
+        }
+
+        let mut result: Vec<u8> = vec![0u8; byte_count];
         unsafe {
-            for i in self.dataset_start..self.dataset_count {
-                result.push(memory.offset(i as isize) as u8);
-            }
+            libc::memcpy(
+                result.as_mut_ptr() as *mut c_void,
+                (memory as *const u8).add(start_byte_offset) as *const c_void,
+                byte_count
+            );
         }
         Ok(result)
     }
@@ -343,5 +390,94 @@ mod tests {
             vec.push(i as u8);
         }
         assert_ne!(hash, vec);
+    }
+
+    #[test]
+    fn test_get_data_returns_correct_size() {
+        let flags = vec![RandomXFlag::FlagDefault];
+        let key = "TestKey";
+        let cache = RandomXCache::new(flags.clone(), key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
+
+        let data = dataset.get_data().unwrap();
+
+        // Verify size is item_count * 64, not just item_count
+        let expected_items = usize::try_from(dataset.dataset_count - dataset.dataset_start)
+            .expect("Test dataset range should fit in usize");
+        let expected_bytes = expected_items * 64;
+
+        assert_eq!(
+            data.len(),
+            expected_bytes,
+            "Expected {} bytes ({} items × 64), got {} bytes",
+            expected_bytes,
+            expected_items,
+            data.len()
+        );
+
+        // Verify it's not just zeros (actual data was copied, not garbage)
+        let non_zero_bytes = data.iter().filter(|&&b| b != 0).count();
+        assert!(
+            non_zero_bytes > 0,
+            "Dataset should contain non-zero data, but got {} non-zero bytes out of {}",
+            non_zero_bytes,
+            data.len()
+        );
+    }
+
+    #[test]
+    fn test_get_data_not_pointer_values() {
+        // This test verifies we're not getting pointer values (the old bug)
+        let flags = vec![RandomXFlag::FlagDefault];
+        let key = "TestKey";
+        let cache = RandomXCache::new(flags.clone(), key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
+
+        let data = dataset.get_data().unwrap();
+
+        // The old bug would have returned a very small amount of data
+        // (only as many bytes as there were items, not items * 64)
+        assert!(
+            data.len() > 1000,
+            "Dataset should be > 1KB, got {} bytes (possible pointer-casting bug)",
+            data.len()
+        );
+    }
+
+    #[test]
+    fn test_get_data_consistency() {
+        // Verify that calling get_data() twice returns the same data
+        let flags = vec![RandomXFlag::FlagDefault];
+        let key = "TestKey";
+        let cache = RandomXCache::new(flags.clone(), key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
+
+        let data1 = dataset.get_data().unwrap();
+        let data2 = dataset.get_data().unwrap();
+
+        assert_eq!(
+            data1, data2,
+            "get_data() should return consistent results on multiple calls"
+        );
+    }
+
+    #[test]
+    fn test_get_data_different_seeds() {
+        // Verify that different seeds produce different datasets
+        let flags = vec![RandomXFlag::FlagDefault];
+
+        let cache1 = RandomXCache::new(flags.clone(), "Key1").unwrap();
+        let dataset1 = RandomXDataset::new(flags.clone(), &cache1, 0).unwrap();
+        let data1 = dataset1.get_data().unwrap();
+
+        let cache2 = RandomXCache::new(flags.clone(), "Key2").unwrap();
+        let dataset2 = RandomXDataset::new(flags.clone(), &cache2, 0).unwrap();
+        let data2 = dataset2.get_data().unwrap();
+
+        assert_eq!(data1.len(), data2.len(), "Datasets should have same size");
+        assert_ne!(
+            data1, data2,
+            "Different seeds should produce different datasets"
+        );
     }
 }
