@@ -193,19 +193,19 @@ impl RandomXDataset {
 
         // Get actual dataset size for bounds checking
         let total_items = match self.count() {
-            Ok(count) => count as usize,
+            Ok(count) => usize::try_from(count).map_err(|_| RandomXError::Other)?,
             Err(_) => return Err(RandomXError::Other),
         };
-
-        // Validate dataset range is within bounds
-        if self.dataset_count as usize > total_items {
-            return Err(RandomXError::Other);
-        }
 
         // Calculate total bytes: item_count * bytes_per_item
         // Note: dataset_count is used as an end index (exclusive range)
         let item_count = usize::try_from(self.dataset_count - self.dataset_start)
             .map_err(|_| RandomXError::Other)?;
+
+        // Validate dataset range is within bounds (checked after try_from to ensure no overflow)
+        if self.dataset_count > total_items as u64 {
+            return Err(RandomXError::Other);
+        }
         let item_size = RANDOMX_DATASET_ITEM_SIZE as usize;
         let byte_count = item_count.checked_mul(item_size)
             .ok_or_else(|| RandomXError::Other)?;
@@ -402,7 +402,8 @@ mod tests {
         let data = dataset.get_data().unwrap();
 
         // Verify size is item_count * 64, not just item_count
-        let expected_items = (dataset.dataset_count - dataset.dataset_start) as usize;
+        let expected_items = usize::try_from(dataset.dataset_count - dataset.dataset_start)
+            .expect("Test dataset range should fit in usize");
         let expected_bytes = expected_items * 64;
 
         assert_eq!(
