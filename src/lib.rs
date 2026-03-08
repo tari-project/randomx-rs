@@ -360,4 +360,92 @@ mod tests {
         }
         assert_ne!(hash, vec);
     }
+
+    #[test]
+    fn test_get_data_returns_correct_size() {
+        let flags = vec![RandomXFlag::FlagDefault];
+        let key = "TestKey";
+        let cache = RandomXCache::new(flags.clone(), key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
+
+        let data = dataset.get_data().unwrap();
+
+        // Verify size is item_count * 64, not just item_count
+        let expected_items = (dataset.dataset_count - dataset.dataset_start) as usize;
+        let expected_bytes = expected_items * 64;
+
+        assert_eq!(
+            data.len(),
+            expected_bytes,
+            "Expected {} bytes ({} items × 64), got {} bytes",
+            expected_bytes,
+            expected_items,
+            data.len()
+        );
+
+        // Verify it's not just zeros (actual data was copied, not garbage)
+        let non_zero_bytes = data.iter().filter(|&&b| b != 0).count();
+        assert!(
+            non_zero_bytes > 0,
+            "Dataset should contain non-zero data, but got {} non-zero bytes out of {}",
+            non_zero_bytes,
+            data.len()
+        );
+    }
+
+    #[test]
+    fn test_get_data_not_pointer_values() {
+        // This test verifies we're not getting pointer values (the old bug)
+        let flags = vec![RandomXFlag::FlagDefault];
+        let key = "TestKey";
+        let cache = RandomXCache::new(flags.clone(), key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
+
+        let data = dataset.get_data().unwrap();
+
+        // The old bug would have returned a very small amount of data
+        // (only as many bytes as there were items, not items * 64)
+        assert!(
+            data.len() > 1000,
+            "Dataset should be > 1KB, got {} bytes (possible pointer-casting bug)",
+            data.len()
+        );
+    }
+
+    #[test]
+    fn test_get_data_consistency() {
+        // Verify that calling get_data() twice returns the same data
+        let flags = vec![RandomXFlag::FlagDefault];
+        let key = "TestKey";
+        let cache = RandomXCache::new(flags.clone(), key).unwrap();
+        let dataset = RandomXDataset::new(flags, &cache, 0).unwrap();
+
+        let data1 = dataset.get_data().unwrap();
+        let data2 = dataset.get_data().unwrap();
+
+        assert_eq!(
+            data1, data2,
+            "get_data() should return consistent results on multiple calls"
+        );
+    }
+
+    #[test]
+    fn test_get_data_different_seeds() {
+        // Verify that different seeds produce different datasets
+        let flags = vec![RandomXFlag::FlagDefault];
+
+        let cache1 = RandomXCache::new(flags.clone(), "Key1").unwrap();
+        let dataset1 = RandomXDataset::new(flags.clone(), &cache1, 0).unwrap();
+        let data1 = dataset1.get_data().unwrap();
+
+        let cache2 = RandomXCache::new(flags.clone(), "Key2").unwrap();
+        let dataset2 = RandomXDataset::new(flags.clone(), &cache2, 0).unwrap();
+        let data2 = dataset2.get_data().unwrap();
+
+        assert_eq!(data1.len(), data2.len(), "Datasets should have same size");
+        assert_ne!(
+            data1, data2,
+            "Different seeds should produce different datasets"
+        );
+    }
 }
