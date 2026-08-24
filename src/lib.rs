@@ -222,9 +222,22 @@ impl RandomXDataset {
     ///
     /// `cache` is a cache object.
     ///
-    /// `start` is the item number where initialization should start, recommended to pass in 0. The items
+    /// `start` is the item number where initialization should start. **Pass 0.** The items
     /// `[start, RandomXDataset::count())` are initialized by the RandomX library; the leading `start` items are
     /// zeroed, since the library never writes them.
+    ///
+    /// # Warning
+    ///
+    /// The RandomX API requires that *every* item from `0` to `RandomXDataset::count() - 1` is initialized before a
+    /// dataset may be used (see the note on `randomx_init_dataset` in `randomx.h`). A non-zero `start` therefore
+    /// produces a dataset that does **not** satisfy that precondition and must **not** be passed to
+    /// [`RandomXVM::new`] or [`RandomXVM::reinit_dataset`]. Doing so is not detected or reported: the VM will read
+    /// the zeroed leading items as though they were real dataset items and silently compute hashes that disagree
+    /// with every other RandomX implementation.
+    ///
+    /// The only legitimate use of a non-zero `start` in the upstream API is splitting the initialization of a single
+    /// *shared* dataset across several threads, each initializing a different item range. This wrapper cannot express
+    /// that, because `new` always allocates its own dataset, so there is no correct value other than 0.
     // Conversions may be lossy on Windows or Linux
     #[allow(clippy::useless_conversion)]
     pub fn new(flags: RandomXFlag, cache: RandomXCache, start: u32) -> Result<RandomXDataset, RandomXError> {
@@ -639,8 +652,12 @@ mod tests {
             data[..prefix].iter().all(|&b| b == 0),
             "The uninitialised prefix was not zeroed"
         );
-        // The final item must be initialised. If `new` passed the full item count as the length instead of the
-        // remaining count, the library would have written `START` items past the end of the allocation.
+        // The final item must be initialised, i.e. the range is not *under*-initialised. Note that this assertion
+        // does not by itself catch a reintroduced overflow: the last item is written both when the correct
+        // remaining count is passed and when the full item count is passed. What catches that regression is the
+        // RandomX library's own `assert(startItem + itemCount <= DatasetItemCount)` in `randomx.cpp`, which is live
+        // in debug builds (the `cmake` crate maps a debug Rust profile to `CMAKE_BUILD_TYPE=Debug`) and aborts the
+        // test binary. CI runs the suite in debug, so a regression here fails the build.
         assert!(
             data[len - RANDOMX_DATASET_ITEM_SIZE..].iter().any(|&b| b != 0),
             "The last dataset item was not initialised"

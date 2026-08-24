@@ -30,7 +30,9 @@ get_binaries
 # Remove old coverage files
 rm cov_raw/*profraw cov_raw/$NAME.profdata cov_raw/$NAME.lcov cov_raw/$NAME.txt
 
-RUSTFLAGS=$RUSTFLAGS LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE cargo test --tests
+# Cap the parallelism: each dataset test holds a ~2.03 GB RandomX dataset (some also a ~2.03 GB copy), so the
+# default `available_parallelism()` thread count exhausts a 16 GB CI runner.
+RUSTFLAGS=$RUSTFLAGS LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE cargo test --tests -- --test-threads=2
 
 cargo profdata -- \
     merge -sparse ./cov_raw/$NAME*.profraw -o ./cov_raw/$NAME.profdata
