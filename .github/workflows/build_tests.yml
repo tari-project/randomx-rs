@@ -16,7 +16,6 @@ name: Build Test Matrix
   workflow_dispatch:
 
 env:
-  toolchain: nightly-2024-07-07
   matrix-json-file: ".github/workflows/build_tests.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -97,10 +96,10 @@ jobs:
           submodules: recursive
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          toolchain: ${{ matrix.builds.rust }}
+          toolchain: stable
           targets: ${{ matrix.builds.target }}
 
       - name: Install Linux dependencies - Ubuntu

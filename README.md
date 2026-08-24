@@ -121,3 +121,4 @@ Quick test with built binaries
 ```bash
 find target -name randomx-tests -exec {} \;
 ```
+ 
