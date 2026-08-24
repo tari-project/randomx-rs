@@ -90,9 +90,9 @@ pub fn fuzz_randomx_create_vm_with_cache_and_dataset(data: Vec<u8>) -> bool {
     if let Ok(cache) = RandomXCache::new(flags, &data) {
         let start = if data.is_empty() { 0u32 } else { u32::from(data[0] % 3) };
         if let Ok(dataset) = RandomXDataset::new(flags, cache.clone(), start) {
-            for _ in 0..100 {
-                let _unused = dataset.get_data();
-            }
+            // Only call this once: `get_data` copies the *entire* dataset (~2.03 GB), so looping here would
+            // allocate, fault in and free hundreds of gigabytes per fuzz run. One call exercises the FFI path.
+            let _unused = dataset.get_data();
             if let Ok(mut vm) = RandomXVM::new(flags, Some(cache.clone()), Some(dataset.clone())) {
                 let _unused = vm.reinit_cache(cache);
                 let _unused = vm.reinit_dataset(dataset);

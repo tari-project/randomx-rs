@@ -57,13 +57,15 @@ use bindings::{
     randomx_vm,
     randomx_vm_set_cache,
     randomx_vm_set_dataset,
-    RANDOMX_DATASET_ITEM_SIZE,
     RANDOMX_HASH_SIZE,
 };
 use bitflags::bitflags;
 use libc::{c_ulong, c_void};
 use thiserror::Error;
 
+/// The size, in bytes, of a single RandomX dataset item. The full dataset returned by
+/// [`RandomXDataset::get_data`] is `RandomXDataset::count()` items of this size.
+pub use crate::bindings::RANDOMX_DATASET_ITEM_SIZE;
 use crate::bindings::{
     randomx_calculate_hash_first,
     randomx_calculate_hash_last,
@@ -220,7 +222,9 @@ impl RandomXDataset {
     ///
     /// `cache` is a cache object.
     ///
-    /// `start` is the item number where initialization should start, recommended to pass in 0.
+    /// `start` is the item number where initialization should start, recommended to pass in 0. The items
+    /// `[start, RandomXDataset::count())` are initialized by the RandomX library; the leading `start` items are
+    /// zeroed, since the library never writes them.
     // Conversions may be lossy on Windows or Linux
     #[allow(clippy::useless_conversion)]
     pub fn new(flags: RandomXFlag, cache: RandomXCache, start: u32) -> Result<RandomXDataset, RandomXError> {
@@ -239,12 +243,41 @@ impl RandomXDataset {
             let result = RandomXDataset { inner: Arc::new(inner) };
 
             if start < item_count {
+                // `randomx_init_dataset` initialises the items `[start, start + count)`, so the count passed to it
+                // must be the number of *remaining* items. Passing the full `item_count` with a non-zero `start`
+                // writes `start` items past the end of the allocation (a heap buffer overflow, silent in release
+                // builds because the library's assertions are compiled out by `NDEBUG`).
+                let remaining = item_count.saturating_sub(start);
+                // `randomx_alloc_dataset` hands back uninitialised memory (only `FLAG_LARGE_PAGES` gets zero pages),
+                // and the call below only writes from `start` onwards, so zero the leading `start` items. Without
+                // this the first `start * RANDOMX_DATASET_ITEM_SIZE` bytes stay uninitialised and reading them in
+                // `get_data` would be undefined behaviour as well as an information leak.
+                if start > 0 {
+                    let memory = unsafe { randomx_get_dataset_memory(result.inner.dataset_ptr) };
+                    if memory.is_null() {
+                        return Err(RandomXError::CreationError(
+                            "Could not get dataset memory to zero the uninitialised prefix".to_string(),
+                        ));
+                    }
+                    let prefix_len = usize::try_from(start)?
+                        .checked_mul(RANDOMX_DATASET_ITEM_SIZE)
+                        .ok_or_else(|| {
+                            RandomXError::CreationError(format!("Dataset prefix size overflows: {start}"))
+                        })?;
+                    // SAFETY: `memory` is the non-null start of the dataset buffer, which the library allocated with
+                    // room for `item_count` items of `RANDOMX_DATASET_ITEM_SIZE` bytes. `start < item_count`, so
+                    // `prefix_len` bytes lie inside that allocation. `u8` is always valid for any bit pattern and has
+                    // an alignment of 1, and nothing else refers to the buffer yet.
+                    unsafe {
+                        ptr::write_bytes(memory.cast::<u8>(), 0, prefix_len);
+                    }
+                }
                 unsafe {
                     randomx_init_dataset(
                         result.inner.dataset_ptr,
                         result.inner.cache.inner.cache_ptr,
                         c_ulong::from(start),
-                        c_ulong::from(item_count),
+                        c_ulong::from(remaining),
                     );
                 }
                 Ok(result)
@@ -274,7 +307,11 @@ impl RandomXDataset {
     ///
     /// The returned buffer is `RandomXDataset::count()` items of [`RANDOMX_DATASET_ITEM_SIZE`] (64) bytes each, i.e.
     /// approximately 2.03 GB with the default RandomX configuration. This is an expensive, fully allocating copy of
-    /// the dataset, so avoid calling it on a hot path.
+    /// the dataset, so avoid calling it on a hot path. The allocation is fallible: an out-of-memory condition is
+    /// reported as a [`RandomXError`] instead of aborting the process.
+    ///
+    /// If the dataset was created with a non-zero `start`, the first `start` items were never initialised by the
+    /// RandomX library; [`RandomXDataset::new`] zeroes them, so they are returned here as zero bytes.
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
         let memory = unsafe { randomx_get_dataset_memory(self.inner.dataset_ptr) };
         if memory.is_null() {
@@ -289,12 +326,23 @@ impl RandomXDataset {
         })?;
         // SAFETY: `memory` is a non-null pointer to the dataset buffer owned by the RandomX library. The library
         // allocated that buffer with room for `randomx_dataset_item_count()` items of `RANDOMX_DATASET_ITEM_SIZE`
-        // bytes each, and `dataset_count` was set from that same call, so exactly `size_in_bytes` bytes are readable
-        // and initialised. `u8` has an alignment of 1, so the pointer is trivially aligned. The buffer outlives the
-        // slice: `&self` keeps the `Arc<RandomXDatasetInner>` (and hence the dataset allocation) alive, the dataset is
-        // read-only once initialised, and the slice is copied into an owned `Vec` before this function returns.
+        // bytes each, and `dataset_count` was set from that same call, so exactly `size_in_bytes` bytes are inside
+        // the allocation. Every one of those bytes is initialised: `RandomXDataset::new` has the library write the
+        // items `[start, count)` and zeroes the `[0, start)` prefix that the library leaves untouched. `u8` has an
+        // alignment of 1, so the pointer is trivially aligned. The buffer outlives the slice: `&self` keeps the
+        // `Arc<RandomXDatasetInner>` (and hence the dataset allocation) alive, the dataset is read-only once
+        // initialised, and the slice is copied into an owned `Vec` before this function returns.
         let data = unsafe { std::slice::from_raw_parts(memory.cast::<u8>(), size_in_bytes) };
-        Ok(data.to_vec())
+        // Allocate fallibly: a plain `to_vec` of ~2 GB would call `handle_alloc_error` and abort the whole process
+        // on failure, which is not an acceptable outcome for a library that returns a `Result`.
+        let mut result = Vec::new();
+        result.try_reserve_exact(size_in_bytes).map_err(|e| {
+            RandomXError::Other(format!(
+                "Could not allocate {size_in_bytes} bytes for the dataset copy: {e}"
+            ))
+        })?;
+        result.extend_from_slice(data);
+        Ok(result)
     }
 }
 
@@ -498,6 +546,7 @@ mod tests {
     use std::{convert::TryFrom, ptr, sync::Arc};
 
     use crate::{
+        bindings::randomx_get_dataset_memory,
         RandomXCache,
         RandomXCacheInner,
         RandomXDataset,
@@ -553,9 +602,53 @@ mod tests {
             item_count * RANDOMX_DATASET_ITEM_SIZE,
             "get_data did not return the full dataset"
         );
-        // Check the buffer is not all zeroes without allocating a second (~2 GB) buffer to compare against.
-        assert!(memory.iter().any(|&b| b != 0), "Dataset memory was all zeroes");
+        // Check the *last* item, which is the part of the range the length fix actually extended, rather than
+        // scanning from the front (which would short-circuit on the very first byte and prove nothing).
+        assert!(
+            memory[memory.len() - RANDOMX_DATASET_ITEM_SIZE..]
+                .iter()
+                .any(|&b| b != 0),
+            "The last dataset item was all zeroes"
+        );
         drop(memory);
+        drop(dataset);
+        drop(cache);
+    }
+
+    #[test]
+    fn lib_dataset_non_zero_start() {
+        const START: u32 = 2;
+        let flags = RandomXFlag::default();
+        let key = "Key";
+        let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
+        let item_count = RandomXDataset::count().unwrap();
+        let dataset = RandomXDataset::new(flags, cache.clone(), START).expect("Failed to allocate dataset");
+
+        // Read the library's buffer directly rather than through `get_data`, so this test does not allocate a
+        // second ~2 GB copy on top of the dataset itself.
+        let memory = unsafe { randomx_get_dataset_memory(dataset.inner.dataset_ptr) };
+        assert!(!memory.is_null());
+        let len = usize::try_from(item_count).unwrap() * RANDOMX_DATASET_ITEM_SIZE;
+        // SAFETY: `memory` is the non-null dataset buffer of `item_count` items, fully initialised by
+        // `RandomXDataset::new`, and it is kept alive by `dataset` for the duration of the borrow.
+        let data = unsafe { std::slice::from_raw_parts(memory.cast::<u8>(), len) };
+
+        // The library never writes the first `START` items, so `new` must have zeroed them.
+        let prefix = usize::try_from(START).unwrap() * RANDOMX_DATASET_ITEM_SIZE;
+        assert!(
+            data[..prefix].iter().all(|&b| b == 0),
+            "The uninitialised prefix was not zeroed"
+        );
+        // The final item must be initialised. If `new` passed the full item count as the length instead of the
+        // remaining count, the library would have written `START` items past the end of the allocation.
+        assert!(
+            data[len - RANDOMX_DATASET_ITEM_SIZE..].iter().any(|&b| b != 0),
+            "The last dataset item was not initialised"
+        );
+
+        // `start` must stay inside the dataset.
+        assert!(RandomXDataset::new(flags, cache.clone(), item_count).is_err());
+
         drop(dataset);
         drop(cache);
     }
