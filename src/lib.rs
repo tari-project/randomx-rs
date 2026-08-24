@@ -57,6 +57,7 @@ use bindings::{
     randomx_vm,
     randomx_vm_set_cache,
     randomx_vm_set_dataset,
+    RANDOMX_DATASET_ITEM_SIZE,
     RANDOMX_HASH_SIZE,
 };
 use bitflags::bitflags;
@@ -269,20 +270,31 @@ impl RandomXDataset {
         }
     }
 
-    /// Returns the values of the internal memory buffer of the `dataset` or an error on failure.
+    /// Returns a copy of the *entire* internal memory buffer of the `dataset`, or an error on failure.
+    ///
+    /// The returned buffer is `RandomXDataset::count()` items of [`RANDOMX_DATASET_ITEM_SIZE`] (64) bytes each, i.e.
+    /// approximately 2.03 GB with the default RandomX configuration. This is an expensive, fully allocating copy of
+    /// the dataset, so avoid calling it on a hot path.
     pub fn get_data(&self) -> Result<Vec<u8>, RandomXError> {
         let memory = unsafe { randomx_get_dataset_memory(self.inner.dataset_ptr) };
         if memory.is_null() {
-            Err(RandomXError::Other("Could not get dataset memory".into()))
-        } else {
-            let count = usize::try_from(self.inner.dataset_count)?;
-            let mut result: Vec<u8> = vec![0u8; count];
-            let n = usize::try_from(self.inner.dataset_count)?;
-            unsafe {
-                libc::memcpy(result.as_mut_ptr() as *mut c_void, memory, n);
-            }
-            Ok(result)
+            return Err(RandomXError::Other("Could not get dataset memory".into()));
         }
+        // `dataset_count` is an *item* count, not a byte count; each item is `RANDOMX_DATASET_ITEM_SIZE` bytes.
+        let item_count = usize::try_from(self.inner.dataset_count)?;
+        let size_in_bytes = item_count.checked_mul(RANDOMX_DATASET_ITEM_SIZE).ok_or_else(|| {
+            RandomXError::Other(format!(
+                "Dataset size overflows usize: {item_count} items of {RANDOMX_DATASET_ITEM_SIZE} bytes each",
+            ))
+        })?;
+        // SAFETY: `memory` is a non-null pointer to the dataset buffer owned by the RandomX library. The library
+        // allocated that buffer with room for `randomx_dataset_item_count()` items of `RANDOMX_DATASET_ITEM_SIZE`
+        // bytes each, and `dataset_count` was set from that same call, so exactly `size_in_bytes` bytes are readable
+        // and initialised. `u8` has an alignment of 1, so the pointer is trivially aligned. The buffer outlives the
+        // slice: `&self` keeps the `Arc<RandomXDatasetInner>` (and hence the dataset allocation) alive, the dataset is
+        // read-only once initialised, and the slice is copied into an owned `Vec` before this function returns.
+        let data = unsafe { std::slice::from_raw_parts(memory.cast::<u8>(), size_in_bytes) };
+        Ok(data.to_vec())
     }
 }
 
@@ -483,9 +495,17 @@ impl RandomXVM {
 
 #[cfg(test)]
 mod tests {
-    use std::{ptr, sync::Arc};
+    use std::{convert::TryFrom, ptr, sync::Arc};
 
-    use crate::{RandomXCache, RandomXCacheInner, RandomXDataset, RandomXDatasetInner, RandomXFlag, RandomXVM};
+    use crate::{
+        RandomXCache,
+        RandomXCacheInner,
+        RandomXDataset,
+        RandomXDatasetInner,
+        RandomXFlag,
+        RandomXVM,
+        RANDOMX_DATASET_ITEM_SIZE,
+    };
 
     #[test]
     fn lib_alloc_cache() {
@@ -525,10 +545,17 @@ mod tests {
         let key = "Key";
         let cache = RandomXCache::new(flags, key.as_bytes()).unwrap();
         let dataset = RandomXDataset::new(flags, cache.clone(), 0).unwrap();
-        let memory = dataset.get_data().unwrap_or_else(|_| std::vec::Vec::new());
-        assert!(!memory.is_empty(), "Failed to get dataset memory");
-        let vec = vec![0u8; memory.len()];
-        assert_ne!(memory, vec);
+        let item_count = usize::try_from(RandomXDataset::count().unwrap()).unwrap();
+        let memory = dataset.get_data().expect("Failed to get dataset memory");
+        // `get_data` must return the *whole* dataset: one item is `RANDOMX_DATASET_ITEM_SIZE` bytes.
+        assert_eq!(
+            memory.len(),
+            item_count * RANDOMX_DATASET_ITEM_SIZE,
+            "get_data did not return the full dataset"
+        );
+        // Check the buffer is not all zeroes without allocating a second (~2 GB) buffer to compare against.
+        assert!(memory.iter().any(|&b| b != 0), "Dataset memory was all zeroes");
+        drop(memory);
         drop(dataset);
         drop(cache);
     }

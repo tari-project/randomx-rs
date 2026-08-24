@@ -22,6 +22,9 @@
 
 use libc::{c_uint, c_ulong, c_void};
 pub const RANDOMX_HASH_SIZE: u32 = 32;
+/// The size, in bytes, of a single RandomX dataset item (`RANDOMX_DATASET_ITEM_SIZE` in `randomx.h`). The size of the
+/// dataset memory buffer is `randomx_dataset_item_count() * RANDOMX_DATASET_ITEM_SIZE`.
+pub const RANDOMX_DATASET_ITEM_SIZE: usize = 64;
 
 #[repr(C)]
 pub struct randomx_dataset {
