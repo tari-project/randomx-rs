@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.5.0](https://github.com/tari-project/randomx-rs/compare/v1.4.1...v1.5.0) (2026-08-24)
+### Bug Fixes
+* `RandomXDataset::get_data` returned only `randomx_dataset_item_count()` **bytes** instead of
+  `randomx_dataset_item_count() * RANDOMX_DATASET_ITEM_SIZE` bytes, i.e. 32.5 MiB of the ~2.03 GB dataset. The
+  returned buffer is now 64x larger; callers that sized a file or buffer from the old value must be updated [#82]
+* `RandomXDataset::new` passed the full item count to `randomx_init_dataset` together with `start`, causing a heap
+  buffer overflow of `start * 64` bytes whenever `start > 0`. It now passes the remaining item count, and zeroes the
+  leading `start` items that the library leaves uninitialised
+
+### Features
+* `RANDOMX_DATASET_ITEM_SIZE` is now exported so callers can compute the dataset size themselves
+* `RandomXDataset::get_data` allocates fallibly and reports an out-of-memory condition as a `RandomXError` instead of
+  aborting the process
+
 ### [1.4.1](https://github.com/tari-project/randomx-rs/compare/v1.4.0...v1.4.1) (2025-09-04)
 ### Bug Fixes
 * Build support for freebsd [#79]

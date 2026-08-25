@@ -122,5 +122,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: cargo test
+        # Cap the parallelism: each dataset test holds a ~2.03 GB RandomX dataset, and several also hold a ~2.03 GB
+        # copy of it, so a single test can be resident at ~4.06 GB. `cargo test` otherwise uses
+        # `available_parallelism()` (4 on ubuntu-latest), which would peak above this runner's 16 GB and be killed
+        # with an opaque SIGKILL.
         run: |
-          cargo test
+          cargo test -- --test-threads=2
