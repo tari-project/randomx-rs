@@ -141,11 +141,18 @@ struct RandomXCacheInner {
     cache_ptr: *mut randomx_cache,
 }
 
+// SAFETY: `RandomXCacheInner` is initialized once in `RandomXCache::new` before being shared behind an `Arc`, and is
+// only ever read thereafter until dropped.
+unsafe impl Send for RandomXCacheInner {}
+unsafe impl Sync for RandomXCacheInner {}
+
 impl Drop for RandomXCacheInner {
     /// De-allocates memory for the `cache` object
     fn drop(&mut self) {
-        unsafe {
-            randomx_release_cache(self.cache_ptr);
+        if !self.cache_ptr.is_null() {
+            unsafe {
+                randomx_release_cache(self.cache_ptr);
+            }
         }
     }
 }
@@ -198,11 +205,18 @@ struct RandomXDatasetInner {
     cache: RandomXCache,
 }
 
+// SAFETY: `RandomXDatasetInner` is initialized once in `RandomXDataset::new` before being shared behind an `Arc`, and
+// its memory is read-only thereafter until dropped.
+unsafe impl Send for RandomXDatasetInner {}
+unsafe impl Sync for RandomXDatasetInner {}
+
 impl Drop for RandomXDatasetInner {
     /// De-allocates memory for the `dataset` object.
     fn drop(&mut self) {
-        unsafe {
-            randomx_release_dataset(self.dataset_ptr);
+        if !self.dataset_ptr.is_null() {
+            unsafe {
+                randomx_release_dataset(self.dataset_ptr);
+            }
         }
     }
 }
@@ -241,6 +255,9 @@ impl RandomXDataset {
     // Conversions may be lossy on Windows or Linux
     #[allow(clippy::useless_conversion)]
     pub fn new(flags: RandomXFlag, cache: RandomXCache, start: u32) -> Result<RandomXDataset, RandomXError> {
+        if cache.inner.cache_ptr.is_null() {
+            return Err(RandomXError::ParameterError("Cache pointer is null".to_string()));
+        }
         let item_count = RandomXDataset::count()
             .map_err(|e| RandomXError::CreationError(format!("Could not get dataset count: {e:?}")))?;
 
@@ -368,11 +385,17 @@ pub struct RandomXVM {
     linked_dataset: Option<RandomXDataset>,
 }
 
+// SAFETY: `RandomXVM` uniquely owns its `randomx_vm` instance and holds `Arc`-backed references to its cache/dataset,
+// so it can be safely moved across threads.
+unsafe impl Send for RandomXVM {}
+
 impl Drop for RandomXVM {
     /// De-allocates memory for the `VM` object.
     fn drop(&mut self) {
-        unsafe {
-            randomx_destroy_vm(self.vm);
+        if !self.vm.is_null() {
+            unsafe {
+                randomx_destroy_vm(self.vm);
+            }
         }
     }
 }
@@ -417,7 +440,16 @@ impl RandomXVM {
                     .as_ref()
                     .map(|data| data.inner.dataset_ptr)
                     .unwrap_or_else(ptr::null_mut);
+                if !is_full_mem && cache_ptr.is_null() {
+                    return Err(RandomXError::ParameterError("Cache pointer is null".to_string()));
+                }
+                if is_full_mem && dataset_ptr.is_null() {
+                    return Err(RandomXError::ParameterError("Dataset pointer is null".to_string()));
+                }
                 let vm = unsafe { randomx_create_vm(flags.bits, cache_ptr, dataset_ptr) };
+                if vm.is_null() {
+                    return Err(RandomXError::CreationError("Failed to allocate VM".to_string()));
+                }
                 Ok(RandomXVM {
                     vm,
                     flags,
@@ -435,6 +467,8 @@ impl RandomXVM {
             Err(RandomXError::FlagConfigError(
                 "Cannot reinit cache with FLAG_FULL_MEM set".to_string(),
             ))
+        } else if cache.inner.cache_ptr.is_null() {
+            Err(RandomXError::ParameterError("Cache pointer is null".to_string()))
         } else {
             unsafe {
                 randomx_vm_set_cache(self.vm, cache.inner.cache_ptr);
@@ -447,16 +481,18 @@ impl RandomXVM {
     /// Re-initializes the `VM` with a new dataset that was initialised with
     /// RandomXFlag::FLAG_FULL_MEM.
     pub fn reinit_dataset(&mut self, dataset: RandomXDataset) -> Result<(), RandomXError> {
-        if self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
+        if !self.flags.contains(RandomXFlag::FLAG_FULL_MEM) {
+            Err(RandomXError::FlagConfigError(
+                "Cannot reinit dataset without FLAG_FULL_MEM set".to_string(),
+            ))
+        } else if dataset.inner.dataset_ptr.is_null() {
+            Err(RandomXError::ParameterError("Dataset pointer is null".to_string()))
+        } else {
             unsafe {
                 randomx_vm_set_dataset(self.vm, dataset.inner.dataset_ptr);
             }
             self.linked_dataset = Some(dataset);
             Ok(())
-        } else {
-            Err(RandomXError::FlagConfigError(
-                "Cannot reinit dataset without FLAG_FULL_MEM set".to_string(),
-            ))
         }
     }
 
@@ -469,8 +505,8 @@ impl RandomXVM {
         } else {
             let size_input = input.len();
             let input_ptr = input.as_ptr() as *mut c_void;
-            let arr = [0; RANDOMX_HASH_SIZE as usize];
-            let output_ptr = arr.as_ptr() as *mut c_void;
+            let mut arr = [0u8; RANDOMX_HASH_SIZE as usize];
+            let output_ptr = arr.as_mut_ptr().cast::<c_void>();
             unsafe {
                 randomx_calculate_hash(self.vm, input_ptr, size_input, output_ptr);
             }
@@ -503,8 +539,7 @@ impl RandomXVM {
         }
 
         // For multiple inputs
-        let mut output_ptr: *mut c_void = ptr::null_mut();
-        let arr = [0; RANDOMX_HASH_SIZE as usize];
+        let mut arr = [0u8; RANDOMX_HASH_SIZE as usize];
 
         // Not len() as last iteration assigns final hash
         let iterations = input.len() + 1;
@@ -512,22 +547,21 @@ impl RandomXVM {
             if i == iterations - 1 {
                 // For last iteration
                 unsafe {
-                    randomx_calculate_hash_last(self.vm, output_ptr);
+                    randomx_calculate_hash_last(self.vm, arr.as_mut_ptr().cast::<c_void>());
                 }
             } else {
                 if input[i].is_empty() {
                     // Stop calculations
-                    if arr != [0; RANDOMX_HASH_SIZE as usize] {
-                        // Complete what was started
+                    if i != 0 {
+                        // Complete what was started in `randomx_calculate_hash_first`
                         unsafe {
-                            randomx_calculate_hash_last(self.vm, output_ptr);
+                            randomx_calculate_hash_last(self.vm, arr.as_mut_ptr().cast::<c_void>());
                         }
                     }
                     return Err(RandomXError::ParameterError("input was empty".to_string()));
                 };
                 let size_input = input[i].len();
                 let input_ptr = input[i].as_ptr() as *mut c_void;
-                output_ptr = arr.as_ptr() as *mut c_void;
                 if i == 0 {
                     // For first iteration
                     unsafe {
@@ -536,7 +570,7 @@ impl RandomXVM {
                 } else {
                     unsafe {
                         // For every other iteration
-                        randomx_calculate_hash_next(self.vm, input_ptr, size_input, output_ptr);
+                        randomx_calculate_hash_next(self.vm, input_ptr, size_input, arr.as_mut_ptr().cast::<c_void>());
                     }
                 }
             }
@@ -673,22 +707,57 @@ mod tests {
     #[test]
     fn test_null_assignments() {
         let flags = RandomXFlag::get_recommended_flags();
-        if let Ok(mut vm) = RandomXVM::new(flags, None, None) {
-            let cache = RandomXCache {
-                inner: Arc::new(RandomXCacheInner {
-                    cache_ptr: ptr::null_mut(),
-                }),
-            };
-            assert!(vm.reinit_cache(cache.clone()).is_err());
-            let dataset = RandomXDataset {
-                inner: Arc::new(RandomXDatasetInner {
-                    dataset_ptr: ptr::null_mut(),
-                    dataset_count: 0,
-                    cache,
-                }),
-            };
-            assert!(vm.reinit_dataset(dataset.clone()).is_err());
-        }
+        assert!(RandomXVM::new(flags, None, None).is_err());
+
+        let null_cache = RandomXCache {
+            inner: Arc::new(RandomXCacheInner {
+                cache_ptr: ptr::null_mut(),
+            }),
+        };
+        assert!(RandomXVM::new(flags, Some(null_cache.clone()), None).is_err());
+        assert!(RandomXDataset::new(flags, null_cache.clone(), 0).is_err());
+
+        let null_dataset = RandomXDataset {
+            inner: Arc::new(RandomXDatasetInner {
+                dataset_ptr: ptr::null_mut(),
+                dataset_count: 0,
+                cache: null_cache.clone(),
+            }),
+        };
+        assert!(RandomXVM::new(flags | RandomXFlag::FLAG_FULL_MEM, None, Some(null_dataset.clone())).is_err());
+
+        let valid_cache = RandomXCache::new(flags, b"Key").unwrap();
+        let mut vm = RandomXVM::new(flags, Some(valid_cache), None).unwrap();
+        assert!(vm.reinit_cache(null_cache).is_err());
+        assert!(vm.reinit_dataset(null_dataset).is_err());
+    }
+
+    #[test]
+    fn test_send_and_sync_bounds() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+
+        assert_send::<RandomXCache>();
+        assert_sync::<RandomXCache>();
+        assert_send::<RandomXDataset>();
+        assert_sync::<RandomXDataset>();
+        assert_send::<RandomXVM>();
+    }
+
+    #[test]
+    fn lib_calculate_hash_set_flushes_on_empty_second_input() {
+        let flags = RandomXFlag::default();
+        let key = b"Key";
+        let cache = RandomXCache::new(flags, key).unwrap();
+        let vm = RandomXVM::new(flags, Some(cache), None).unwrap();
+
+        let err_inputs: [&[u8]; 2] = [b"Input 1", b""];
+        assert!(vm.calculate_hash_set(&err_inputs).is_err());
+
+        // The VM must still produce identical hashes on subsequent calls after an aborted batch.
+        let expected = vm.calculate_hash(b"Input 2").unwrap();
+        let batch = vm.calculate_hash_set(&[b"Input 2", b"Input 3"]).unwrap();
+        assert_eq!(batch[0], expected);
     }
 
     #[test]
