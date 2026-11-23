@@ -57,6 +57,7 @@ use bindings::{
     randomx_vm,
     randomx_vm_set_cache,
     randomx_vm_set_dataset,
+    RANDOMX_FLAG_V2,
     RANDOMX_HASH_SIZE,
 };
 use bitflags::bitflags;
@@ -95,6 +96,8 @@ bitflags! {
         const FLAG_ARGON2_AVX2  = 0b0100_0000;
         /// Optimize Argon2 for CPUs without the AVX2 or SSSE3 instruction sets.
         const FLAG_ARGON2       = 0b0110_0000;
+        /// Enable the RandomX v2 algorithm.
+        const FLAG_V2           = RANDOMX_FLAG_V2;
     }
 }
 
@@ -105,6 +108,7 @@ impl RandomXFlag {
     /// * FLAG_LARGE_PAGES
     /// * FLAG_FULL_MEM
     /// * FLAG_SECURE
+    /// * FLAG_V2
     ///
     /// The above flags need to be set manually, if required.
     pub fn get_recommended_flags() -> RandomXFlag {
@@ -160,9 +164,10 @@ impl RandomXCache {
     /// Creates and alllcates memory for a new cache object, and initializes it with
     /// the key value.
     ///
-    /// `flags` is any combination of the following two flags:
+    /// `flags` is any combination of the following flags:
     /// * FLAG_LARGE_PAGES
     /// * FLAG_JIT
+    /// * FLAG_V2
     ///
     /// and (optionally) one of the following flags (depending on instruction set supported):
     /// * FLAG_ARGON2_SSSE3
@@ -380,12 +385,13 @@ impl Drop for RandomXVM {
 impl RandomXVM {
     /// Creates a new `VM` and initializes it, error on failure.
     ///
-    /// `flags` is any combination of the following 5 flags:
+    /// `flags` is any combination of the following 6 flags:
     /// * FLAG_LARGE_PAGES
     /// * FLAG_HARD_AES
     /// * FLAG_FULL_MEM
     /// * FLAG_JIT
     /// * FLAG_SECURE
+    /// * FLAG_V2
     ///
     /// Or
     ///
@@ -904,6 +910,64 @@ mod tests {
             let vm = RandomXVM::new(flags, Some(cache), None).unwrap();
             let hash = vm.calculate_hash(input).unwrap();
             assert_eq!(hex::decode(expected).unwrap(), hash);
+        }
+    }
+
+    #[test]
+    fn test_vectors_light_mode_v2() {
+        let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_V2;
+        let vectors = [
+            (
+                b"test key 000".as_slice(),
+                b"This is a test".as_slice(),
+                "22ec6b861b3eb23686b2efbad69513c967ecfce80983df66c9c5b4fbfb4cdb6f",
+            ),
+            (
+                b"test key 000".as_slice(),
+                b"Lorem ipsum dolor sit amet".as_slice(),
+                "9e2c772c12fd48f93c14c97fdc89d556264d9100597023f44d9163e279012ecf",
+            ),
+            (
+                b"test key 001".as_slice(),
+                b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+                "97024134686ce27d362ea8d86d8ef16483ac272abdabd46ef13359400777fe5e",
+            ),
+        ];
+
+        for (key, input, expected) in vectors {
+            let cache = RandomXCache::new(flags, key).unwrap();
+            let vm = RandomXVM::new(flags, Some(cache), None).unwrap();
+            assert_eq!(hex::decode(expected).unwrap(), vm.calculate_hash(input).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_vectors_fast_mode_v2() {
+        let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_FULL_MEM | RandomXFlag::FLAG_V2;
+        let cache = RandomXCache::new(flags, b"test key 000").unwrap();
+        let dataset = RandomXDataset::new(flags, cache, 0).unwrap();
+        let vm = RandomXVM::new(flags, None, Some(dataset)).unwrap();
+
+        assert_eq!(
+            hex::decode("22ec6b861b3eb23686b2efbad69513c967ecfce80983df66c9c5b4fbfb4cdb6f").unwrap(),
+            vm.calculate_hash(b"This is a test").unwrap(),
+        );
+    }
+
+    #[test]
+    fn calculate_hash_set_v2_matches_single_hashes() {
+        let flags = RandomXFlag::get_recommended_flags() | RandomXFlag::FLAG_V2;
+        let inputs = [
+            b"This is a test".as_slice(),
+            b"Lorem ipsum dolor sit amet".as_slice(),
+            b"sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".as_slice(),
+        ];
+        let cache = RandomXCache::new(flags, b"test key 000").unwrap();
+        let vm = RandomXVM::new(flags, Some(cache), None).unwrap();
+
+        let hashes = vm.calculate_hash_set(&inputs).unwrap();
+        for (input, batched) in inputs.iter().copied().zip(hashes) {
+            assert_eq!(batched, vm.calculate_hash(input).unwrap());
         }
     }
 }
